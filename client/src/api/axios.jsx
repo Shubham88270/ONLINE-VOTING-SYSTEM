@@ -1,11 +1,13 @@
 import axios from 'axios';
 
-// Base API instance — proxy in package.json forwards to localhost:5000
+// Use env variable in production, proxy in development
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: process.env.REACT_APP_API_URL
+    ? `${process.env.REACT_APP_API_URL}/api`
+    : '/api',
 });
 
-// Attach JWT token to every request if present
+// Request — JWT token attach karo
 api.interceptors.request.use((config) => {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   if (user?.token) {
@@ -13,5 +15,20 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Response — 401 pe auto logout
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('user');
+      // Reload to trigger auth check
+      if (window.location.pathname !== '/auth') {
+        window.location.href = '/auth';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

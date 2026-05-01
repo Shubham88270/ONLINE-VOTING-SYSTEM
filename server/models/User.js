@@ -9,34 +9,52 @@ const userSchema = new mongoose.Schema(
     isAdmin:  { type: Boolean, default: false },
 
     // Voter specific
-    voterId:  { type: String, unique: true, sparse: true }, // auto-generated
-    photo:    { type: String, default: '' },                // profile photo URL
+    voterId:    { type: String, unique: true, sparse: true },
+    photo:      { type: String, default: '' },
+
+    // Academic details
+    branch:     { type: String, default: '' },
+    college:    { type: String, default: '' },
+    university: { type: String, default: '' },
+    rollNo:     { type: String, default: '' },
 
     // Status
-    isVerified:  { type: Boolean, default: false },  // email verified
-    isApproved:  { type: Boolean, default: false },  // admin approved
+    isVerified: { type: Boolean, default: false },
+    isApproved: { type: Boolean, default: false },
 
     votedElections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Election' }],
 
-    // Email verification
+    // Email verification token
     verificationToken:  { type: String, default: null },
     verificationExpiry: { type: Date,   default: null },
+
+    // OTP for admin-registered users
+    otp:         { type: String,  default: null },
+    otpExpiry:   { type: Date,    default: null },
   },
   { timestamps: true }
 );
 
-// Hash password
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
 
-// Auto-generate voter ID before save
 userSchema.pre('save', async function (next) {
   if (!this.voterId) {
-    const count = await mongoose.model('User').countDocuments();
-    this.voterId = `VOTER-${String(count + 1).padStart(5, '0')}`;
+    // Keep trying until we get a unique voterId
+    let voterId;
+    let attempts = 0;
+    while (true) {
+      attempts++;
+      const count   = await mongoose.model('User').countDocuments();
+      const suffix  = String(count + attempts + Math.floor(Math.random() * 50)).padStart(5, '0');
+      voterId       = `VOTER-${suffix}`;
+      const exists  = await mongoose.model('User').findOne({ voterId });
+      if (!exists) break;
+    }
+    this.voterId = voterId;
   }
   next();
 });

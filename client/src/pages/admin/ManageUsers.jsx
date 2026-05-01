@@ -1,250 +1,327 @@
 import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import api from '../../api/axios.jsx';
 import Spinner from '../../components/Spinner.jsx';
 
-const emptyUser = () => ({ name: '', email: '', password: '', showPw: false });
+const glass = { background:'rgba(255,255,255,0.04)', backdropFilter:'blur(16px)', border:'1px solid rgba(255,255,255,0.08)' };
+const inputCls = "w-full rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
+const inputStyle = { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' };
+
+const emptyUser = () => ({ name:'', email:'', password:'', showPw:false, branch:'', college:'', university:'', rollNo:'' });
 
 export default function ManageUsers() {
   const [users,      setUsers]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [rows,       setRows]       = useState([emptyUser()]);
   const [regLoading, setRegLoading] = useState(false);
-  const [pwForms,    setPwForms]    = useState({});
-  const [tab,        setTab]        = useState('all'); // all | pending
+  const [tab,        setTab]        = useState('all');
+  const [otpModal,   setOtpModal]   = useState(null);
+  const [otpValue,   setOtpValue]   = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpMsg,     setOtpMsg]     = useState('');
 
   const fetchUsers = () => {
     setLoading(true);
-    api.get('/auth/users')
-      .then(({ data }) => setUsers(data))
-      .catch(() => toast.error('Failed to load users'))
-      .finally(() => setLoading(false));
+    api.get('/auth/users').then(({ data }) => setUsers(data)).catch(() => toast.error('Failed')).finally(() => setLoading(false));
   };
-
   useEffect(() => { fetchUsers(); }, []);
 
-  // ── Approve / Reject ──
   const handleApprove = async (id, name) => {
-    try {
-      await api.patch(`/auth/users/${id}/approve`);
-      toast.success(`✅ ${name} approved!`);
-      fetchUsers();
-    } catch { toast.error('Failed to approve'); }
+    try { await api.patch(`/auth/users/${id}/approve`); toast.success(`✅ ${name} approved!`); fetchUsers(); }
+    catch { toast.error('Failed'); }
   };
-
   const handleReject = async (id, name) => {
-    try {
-      await api.patch(`/auth/users/${id}/reject`);
-      toast.success(`❌ ${name} rejected`);
-      fetchUsers();
-    } catch { toast.error('Failed to reject'); }
+    try { await api.patch(`/auth/users/${id}/reject`); toast.success(`${name} revoked`); fetchUsers(); }
+    catch { toast.error('Failed'); }
+  };
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Delete "${name}"?`)) return;
+    try { await api.delete(`/auth/users/${id}`); toast.success(`🗑️ ${name} deleted`); fetchUsers(); }
+    catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
   };
 
-  // ── Register rows ──
-  const addRow    = () => setRows((p) => [...p, emptyUser()]);
-  const removeRow = (i) => { if (rows.length > 1) setRows((p) => p.filter((_, idx) => idx !== i)); };
-  const updateRow = (i, f, v) => setRows((p) => { const u = [...p]; u[i] = { ...u[i], [f]: v }; return u; });
+  const addRow    = () => setRows(p => [...p, emptyUser()]);
+  const removeRow = (i) => { if (rows.length > 1) setRows(p => p.filter((_,idx) => idx !== i)); };
+  const updateRow = (i, f, v) => setRows(p => { const u=[...p]; u[i]={...u[i],[f]:v}; return u; });
 
   const handleRegisterAll = async (e) => {
     e.preventDefault();
-    const valid = rows.filter((r) => r.name.trim() && r.email.trim() && r.password.length >= 6);
+    const valid = rows.filter(r => r.name.trim() && r.email.trim() && r.password.length >= 6);
     if (!valid.length) return toast.error('Fill at least one complete row');
     setRegLoading(true);
     let ok = 0;
-    await Promise.all(valid.map(async (r) => {
+    for (const r of valid) {
       try {
-        await api.post('/auth/admin/register-user', { name: r.name, email: r.email, password: r.password });
+        const { data } = await api.post('/auth/admin/register-user', { name:r.name, email:r.email, password:r.password, branch:r.branch, college:r.college, university:r.university, rollNo:r.rollNo });
         ok++;
-      } catch (err) {
-        toast.error(`${r.email}: ${err.response?.data?.message || 'Error'}`);
-      }
-    }));
-    if (ok) { toast.success(`✅ ${ok} user(s) registered!`); setRows([emptyUser()]); fetchUsers(); }
+        if (data.requiresOTP) { setOtpModal({ userId:data.userId, email:r.email, name:r.name }); setOtpValue(''); setOtpMsg(''); }
+      } catch (err) { toast.error(`${r.email}: ${err.response?.data?.message || 'Error'}`); }
+    }
+    if (ok) { setRows([emptyUser()]); fetchUsers(); }
     setRegLoading(false);
   };
 
-  // ── Password reset ──
-  const updatePw = (id, f, v) => setPwForms((p) => ({ ...p, [id]: { ...p[id], [f]: v } }));
-  const handleSetPw = async (user) => {
-    const pw = pwForms[user._id]?.value || '';
-    if (pw.length < 6) return toast.error('Min 6 characters');
+  const handleVerifyOTP = async () => {
+    if (otpValue.length !== 6) return setOtpMsg('❌ Enter 6-digit OTP');
+    setOtpLoading(true);
     try {
-      await api.patch(`/auth/users/${user._id}/password`, { password: pw });
-      toast.success(`✅ Password updated for ${user.name}`);
-      updatePw(user._id, 'value', '');
-    } catch (err) { toast.error(err.response?.data?.message || 'Error'); }
+      const { data } = await api.post('/auth/verify-otp', { userId:otpModal.userId, otp:otpValue });
+      toast.success(`✅ ${otpModal.name} verified! ID: ${data.voterId}`);
+      setOtpModal(null); setOtpValue(''); fetchUsers();
+    } catch (err) { setOtpMsg(err.response?.data?.message || '❌ Invalid OTP'); }
+    finally { setOtpLoading(false); }
+  };
+
+  const handleResendOTP = async () => {
+    try { await api.post('/auth/resend-otp', { userId:otpModal.userId }); setOtpMsg('✅ OTP resent!'); }
+    catch (err) { setOtpMsg(err.response?.data?.message || 'Failed'); }
   };
 
   if (loading) return <Spinner />;
 
-  const pending  = users.filter((u) => !u.isAdmin && !u.isApproved);
-  const filtered = tab === 'pending' ? pending : users;
+  const verifiedUsers = users.filter(u => u.isVerified);
+  const pending       = verifiedUsers.filter(u => !u.isAdmin && !u.isApproved);
+  const filtered      = tab === 'pending' ? pending : verifiedUsers;
+  const otpPending    = users.filter(u => !u.isVerified && !u.isAdmin).length;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Manage Users</h1>
+    <div className="space-y-6">
+      <motion.div initial={{ opacity:0, y:-10 }} animate={{ opacity:1, y:0 }}>
+        <h1 className="text-2xl font-bold text-white">Manage Users</h1>
+        <p className="text-slate-500 text-sm mt-1">Register and manage voter accounts</p>
+      </motion.div>
 
       {/* Register Form */}
-      <div className="bg-white rounded-xl shadow p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold text-gray-700 text-lg">👥 Register New Users</h2>
-            <p className="text-gray-400 text-sm">Admin-registered users are auto-approved</p>
-          </div>
-          <button onClick={addRow}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
-            + Add User
-          </button>
-        </div>
-        <form onSubmit={handleRegisterAll} className="space-y-2">
-          <div className="hidden sm:grid grid-cols-12 gap-2 px-1 text-xs font-medium text-gray-400">
-            <p className="col-span-3">Full Name *</p>
-            <p className="col-span-4">Email *</p>
-            <p className="col-span-4">Password * (min 6)</p>
-          </div>
-          {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center bg-gray-50 rounded-lg p-2">
-              <div className="col-span-12 sm:col-span-3">
-                <input value={row.name} onChange={(e) => updateRow(i, 'name', e.target.value)}
-                  placeholder={`Name ${i+1}`}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-              </div>
-              <div className="col-span-12 sm:col-span-4">
-                <input type="email" value={row.email} onChange={(e) => updateRow(i, 'email', e.target.value)}
-                  placeholder={`email${i+1}@example.com`}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-              </div>
-              <div className="col-span-11 sm:col-span-4 relative">
-                <input type={row.showPw ? 'text' : 'password'} value={row.password}
-                  onChange={(e) => updateRow(i, 'password', e.target.value)}
-                  placeholder="Password"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 pr-8" />
-                <button type="button" onClick={() => updateRow(i, 'showPw', !row.showPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                  {row.showPw ? '🙈' : '👁️'}
-                </button>
-              </div>
-              <div className="col-span-1 flex justify-center">
-                <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                  className="text-red-400 hover:text-red-600 disabled:opacity-20 text-lg">✕</button>
-              </div>
+      <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}
+        className="rounded-2xl p-6" style={glass}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style={{ background:'rgba(139,92,246,0.2)', border:'1px solid rgba(139,92,246,0.3)' }}>👥</div>
+            <div>
+              <h2 className="font-semibold text-white">Register New Users</h2>
+              <p className="text-slate-500 text-xs">OTP sent to user email for verification</p>
             </div>
+          </div>
+          <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }} onClick={addRow}
+            className="text-sm px-4 py-2 rounded-xl font-medium text-white"
+            style={{ background:'linear-gradient(135deg, #8b5cf6, #6d28d9)', boxShadow:'0 4px 15px rgba(139,92,246,0.3)' }}>
+            + Add User
+          </motion.button>
+        </div>
+
+        <form onSubmit={handleRegisterAll} className="space-y-3">
+          {rows.map((row, i) => (
+            <motion.div key={i} initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }} transition={{ delay:i*0.05 }}
+              className="rounded-xl p-4 space-y-3" style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-violet-400 px-2 py-0.5 rounded-full" style={{ background:'rgba(139,92,246,0.1)', border:'1px solid rgba(139,92,246,0.2)' }}>
+                  User #{i+1}
+                </span>
+                <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
+                  className="text-red-400/50 hover:text-red-400 disabled:opacity-20 text-sm transition">✕ Remove</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Full Name *</label>
+                  <input value={row.name} onChange={e => updateRow(i,'name',e.target.value)} placeholder="Ali Ahmed" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Email *</label>
+                  <input type="email" value={row.email} onChange={e => updateRow(i,'email',e.target.value)} placeholder="ali@example.com" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Password *</label>
+                  <div className="relative">
+                    <input type={row.showPw ? 'text' : 'password'} value={row.password} onChange={e => updateRow(i,'password',e.target.value)} placeholder="Min 6 chars" className={`${inputCls} pr-8`} style={inputStyle} />
+                    <button type="button" onClick={() => updateRow(i,'showPw',!row.showPw)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs">{row.showPw ? '🙈' : '👁️'}</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Roll No</label>
+                  <input value={row.rollNo} onChange={e => updateRow(i,'rollNo',e.target.value)} placeholder="2021CS001" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Branch</label>
+                  <input value={row.branch} onChange={e => updateRow(i,'branch',e.target.value)} placeholder="Computer Science" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">College</label>
+                  <input value={row.college} onChange={e => updateRow(i,'college',e.target.value)} placeholder="ABC College" className={inputCls} style={inputStyle} />
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="text-xs text-slate-500 mb-1 block">University</label>
+                  <input value={row.university} onChange={e => updateRow(i,'university',e.target.value)} placeholder="XYZ University" className={inputCls} style={inputStyle} />
+                </div>
+              </div>
+            </motion.div>
           ))}
-          <button type="button" onClick={addRow}
-            className="w-full border-2 border-dashed border-indigo-300 text-indigo-400 hover:border-indigo-500 hover:text-indigo-600 rounded-lg py-2 text-sm transition">
+
+          <button type="button" onClick={addRow} className="w-full py-2.5 rounded-xl text-sm text-slate-500 hover:text-slate-300 transition" style={{ border:'1px dashed rgba(255,255,255,0.1)' }}>
             + Add another user
           </button>
-          <button type="submit" disabled={regLoading}
-            className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-60">
-            {regLoading ? '⏳ Registering...' : '➕ Register Users'}
-          </button>
+
+          <motion.button type="submit" disabled={regLoading} whileHover={{ scale:1.01 }} whileTap={{ scale:0.98 }}
+            className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background:'linear-gradient(135deg, #8b5cf6, #6d28d9)', boxShadow:'0 4px 15px rgba(139,92,246,0.3)' }}>
+            {regLoading ? '⏳ Registering...' : `➕ Register ${rows.length} User(s)`}
+          </motion.button>
         </form>
-      </div>
+      </motion.div>
 
       {/* Users Table */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-gray-700">All Users ({users.length})</h2>
-        <div className="flex gap-2">
-          {['all', 'pending'].map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`text-xs px-3 py-1 rounded-lg font-medium transition ${tab === t ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              {t === 'all' ? `All (${users.length})` : `Pending (${pending.length})`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {pending.length > 0 && tab === 'all' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 mb-3 text-sm text-yellow-700">
-          🔔 <strong>{pending.length}</strong> voter(s) pending approval
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="px-5 py-3 text-left">Voter</th>
-              <th className="px-5 py-3 text-left">Voter ID</th>
-              <th className="px-5 py-3 text-left">Status</th>
-              <th className="px-5 py-3 text-left">Votes</th>
-              <th className="px-5 py-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.map((u) => (
-              <tr key={u._id} className="hover:bg-gray-50">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">
-                      {u.name?.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-800">{u.name}</p>
-                      <p className="text-xs text-gray-400">{u.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{u.voterId || '—'}</span>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex flex-col gap-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${u.isAdmin ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {u.isAdmin ? '👑 Admin' : '👤 User'}
-                    </span>
-                    {!u.isAdmin && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {u.isApproved ? '✅ Approved' : '⏳ Pending'}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-gray-500">{u.votedElections?.length || 0}</td>
-                <td className="px-5 py-4">
-                  <div className="flex flex-col gap-2">
-                    {/* Approve/Reject */}
-                    {!u.isAdmin && (
-                      <div className="flex gap-1">
-                        {!u.isApproved ? (
-                          <button onClick={() => handleApprove(u._id, u.name)}
-                            className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200 transition font-medium">
-                            ✅ Approve
-                          </button>
-                        ) : (
-                          <button onClick={() => handleReject(u._id, u.name)}
-                            className="text-xs px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200 transition font-medium">
-                            ❌ Revoke
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {/* Password reset */}
-                    <div className="flex items-center gap-1">
-                      <div className="relative">
-                        <input type={pwForms[u._id]?.show ? 'text' : 'password'}
-                          placeholder="New password"
-                          value={pwForms[u._id]?.value || ''}
-                          onChange={(e) => updatePw(u._id, 'value', e.target.value)}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs w-28 focus:outline-none focus:ring-1 focus:ring-indigo-400 pr-6" />
-                        <button type="button" onClick={() => updatePw(u._id, 'show', !pwForms[u._id]?.show)}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                          {pwForms[u._id]?.show ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-                      <button onClick={() => handleSetPw(u)}
-                        className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-600 hover:bg-indigo-200 transition font-medium">
-                        Set
-                      </button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
+      <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }}
+        className="rounded-2xl overflow-hidden" style={glass}>
+        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor:'rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-white">All Users</h2>
+            {otpPending > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full text-blue-300" style={{ background:'rgba(59,130,246,0.1)', border:'1px solid rgba(59,130,246,0.2)' }}>
+                ⏳ {otpPending} awaiting OTP
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {['all','pending'].map(t => (
+              <motion.button key={t} whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
+                onClick={() => setTab(t)}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                style={tab === t
+                  ? { background:'rgba(59,130,246,0.2)', border:'1px solid rgba(59,130,246,0.4)', color:'#93c5fd' }
+                  : { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#64748b' }}>
+                {t === 'all' ? `All (${verifiedUsers.length})` : `Pending (${pending.length})`}
+              </motion.button>
             ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && <p className="text-center text-gray-400 py-10">No users found.</p>}
-      </div>
+          </div>
+        </div>
+
+        {pending.length > 0 && tab === 'all' && (
+          <div className="mx-5 mt-3 px-4 py-2.5 rounded-xl text-sm text-amber-300 flex items-center gap-2" style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)' }}>
+            🔔 <strong>{pending.length}</strong> voter(s) pending approval
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background:'rgba(255,255,255,0.03)' }}>
+                {['Voter','Voter ID','Branch / College','Status','Votes','Actions'].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((u, i) => (
+                <motion.tr key={u._id} initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:i*0.04 }}
+                  className="border-t transition-colors hover:bg-white/[0.02]" style={{ borderColor:'rgba(255,255,255,0.04)' }}>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center text-sm font-bold text-blue-300">
+                        {u.name?.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-200">{u.name}</p>
+                        <p className="text-xs text-slate-600">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className="font-mono text-xs text-slate-400 px-2 py-1 rounded-lg" style={{ background:'rgba(255,255,255,0.05)' }}>{u.voterId || '—'}</span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="text-xs text-slate-500 space-y-0.5">
+                      {u.branch     && <p className="text-slate-400">🎓 {u.branch}</p>}
+                      {u.college    && <p>🏫 {u.college}</p>}
+                      {u.university && <p>🏛️ {u.university}</p>}
+                      {u.rollNo     && <p>🔢 {u.rollNo}</p>}
+                      {!u.branch && !u.college && !u.university && !u.rollNo && <p className="text-slate-700">—</p>}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium w-fit" style={u.isAdmin ? { background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.2)', color:'#a5b4fc' } : { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#64748b' }}>
+                        {u.isAdmin ? '👑 Admin' : '👤 User'}
+                      </span>
+                      {!u.isAdmin && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium w-fit" style={u.isApproved ? { background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.2)', color:'#6ee7b7' } : { background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.2)', color:'#fcd34d' }}>
+                          {u.isApproved ? '✅ Approved' : '⏳ Pending'}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-400">{u.votedElections?.length || 0}</td>
+                  <td className="px-5 py-4">
+                    {!u.isAdmin && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {!u.isApproved ? (
+                          <motion.button whileHover={{ scale:1.05 }} whileTap={{ scale:0.95 }}
+                            onClick={() => handleApprove(u._id, u.name)}
+                            className="text-xs px-2.5 py-1 rounded-lg font-medium transition"
+                            style={{ background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.2)', color:'#6ee7b7' }}>
+                            ✅ Approve
+                          </motion.button>
+                        ) : (
+                          <motion.button whileHover={{ scale:1.05 }} whileTap={{ scale:0.95 }}
+                            onClick={() => handleReject(u._id, u.name)}
+                            className="text-xs px-2.5 py-1 rounded-lg font-medium transition"
+                            style={{ background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.2)', color:'#fcd34d' }}>
+                            ⏸ Revoke
+                          </motion.button>
+                        )}
+                        <motion.button whileHover={{ scale:1.05 }} whileTap={{ scale:0.95 }}
+                          onClick={() => handleDelete(u._id, u.name)}
+                          className="text-xs px-2.5 py-1 rounded-lg font-medium transition"
+                          style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', color:'#fca5a5' }}>
+                          🗑️ Delete
+                        </motion.button>
+                      </div>
+                    )}
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && (
+            <div className="text-center py-12 text-slate-600">
+              <p className="text-3xl mb-2">👥</p>
+              <p>No users found.</p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* OTP Modal */}
+      <AnimatePresence>
+        {otpModal && (
+          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 backdrop-blur-sm">
+            <motion.div initial={{ scale:0.9, y:20 }} animate={{ scale:1, y:0 }} exit={{ scale:0.9, y:20 }}
+              className="rounded-2xl p-8 max-w-sm w-full text-center" style={{ background:'rgba(15,23,42,0.95)', border:'1px solid rgba(99,102,241,0.3)', boxShadow:'0 25px 60px rgba(0,0,0,0.5)' }}>
+              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-3xl mx-auto mb-4">📧</div>
+              <h3 className="text-xl font-bold text-white mb-1">OTP Verification</h3>
+              <p className="text-slate-500 text-sm mb-1">OTP sent to:</p>
+              <p className="text-blue-400 font-semibold mb-4">{otpModal.email}</p>
+              <p className="text-slate-600 text-xs mb-5">Ask <strong className="text-slate-400">{otpModal.name}</strong> to check their email and share the OTP.</p>
+              <input type="text" maxLength={6} value={otpValue}
+                onChange={e => { setOtpValue(e.target.value.replace(/\D/g,'')); setOtpMsg(''); }}
+                placeholder="_ _ _ _ _ _"
+                className="w-full rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 mb-3"
+                style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(99,102,241,0.3)', letterSpacing:'0.5em' }} />
+              {otpMsg && <p className={`text-sm mb-3 ${otpMsg.startsWith('✅') ? 'text-emerald-400' : 'text-red-400'}`}>{otpMsg}</p>}
+              <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
+                onClick={handleVerifyOTP} disabled={otpLoading || otpValue.length !== 6}
+                className="w-full py-2.5 rounded-xl font-semibold text-white disabled:opacity-50 mb-2"
+                style={{ background:'linear-gradient(135deg, #3b82f6, #1e40af)', boxShadow:'0 4px 20px rgba(59,130,246,0.3)' }}>
+                {otpLoading ? '⏳ Verifying...' : '✅ Verify OTP'}
+              </motion.button>
+              <div className="flex gap-2">
+                <button onClick={handleResendOTP} className="flex-1 text-sm py-2 rounded-xl text-blue-400 hover:text-blue-300 transition" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>🔄 Resend</button>
+                <button onClick={() => setOtpModal(null)} className="flex-1 text-sm py-2 rounded-xl text-slate-500 hover:text-slate-300 transition" style={{ border:'1px solid rgba(255,255,255,0.08)' }}>Cancel</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

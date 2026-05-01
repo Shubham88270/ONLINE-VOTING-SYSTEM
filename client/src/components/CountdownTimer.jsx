@@ -1,21 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 export default function CountdownTimer({ endDate, isActive, onExpire }) {
   const [timeLeft, setTimeLeft] = useState(null);
+  // useRef se onExpire stable reference rakho — infinite loop nahi hoga
+  const onExpireRef = useRef(onExpire);
+  const expiredRef  = useRef(false); // sirf ek baar call karo
+
+  useEffect(() => { onExpireRef.current = onExpire; }, [onExpire]);
 
   useEffect(() => {
     if (!endDate) return;
+    expiredRef.current = false; // reset on endDate change
 
     const calc = () => {
       const diff = new Date(endDate) - new Date();
-
       if (diff <= 0) {
         setTimeLeft(null);
-        // Notify parent to refresh so status becomes Closed
-        if (onExpire) onExpire();
+        // Sirf ek baar call karo — infinite loop rokne ke liye
+        if (!expiredRef.current) {
+          expiredRef.current = true;
+          if (onExpireRef.current) onExpireRef.current();
+        }
         return;
       }
-
       const days    = Math.floor(diff / (1000 * 60 * 60 * 24));
       const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -26,39 +33,34 @@ export default function CountdownTimer({ endDate, isActive, onExpire }) {
     calc();
     const interval = setInterval(calc, 1000);
     return () => clearInterval(interval);
-  }, [endDate, onExpire]);
+  }, [endDate]); // ✅ sirf endDate dependency — onExpire nahi
 
   if (!endDate) return null;
 
-  // Time expired or already closed
   if (!isActive || !timeLeft) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 border border-gray-200 mt-1">
-        <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
+      <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full mt-1 font-medium"
+        style={{ background:'rgba(100,116,139,0.1)', border:'1px solid rgba(100,116,139,0.2)', color:'#64748b' }}>
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block" />
         Closed
       </span>
     );
   }
 
-  // Color based on urgency
-  const urgent  = timeLeft.diff < 1000 * 60 * 60;        // < 1 hour  → red
-  const warning = timeLeft.diff < 1000 * 60 * 60 * 24;   // < 1 day   → orange
+  const urgent  = timeLeft.diff < 1000 * 60 * 60;
+  const warning = timeLeft.diff < 1000 * 60 * 60 * 24;
 
-  const color = urgent
-    ? 'text-red-600 bg-red-50 border-red-200'
+  const style = urgent
+    ? { background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', color:'#fca5a5' }
     : warning
-    ? 'text-orange-600 bg-orange-50 border-orange-200'
-    : 'text-green-700 bg-green-50 border-green-200';
+    ? { background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.2)', color:'#fcd34d' }
+    : { background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.2)', color:'#6ee7b7' };
 
-  const dot = urgent
-    ? 'bg-red-500 animate-pulse'
-    : warning
-    ? 'bg-orange-500'
-    : 'bg-green-500 animate-pulse';
+  const dotClass = urgent ? 'bg-red-400 animate-pulse' : warning ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse';
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border mt-1 font-medium ${color}`}>
-      <span className={`w-2 h-2 rounded-full ${dot}`} />
+    <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full mt-1 font-medium" style={style}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
       {timeLeft.days > 0    && `${timeLeft.days}d `}
       {timeLeft.hours > 0   && `${timeLeft.hours}h `}
       {timeLeft.minutes > 0 && `${timeLeft.minutes}m `}

@@ -37,9 +37,29 @@ exports.addCandidate = async (req, res) => {
   try {
     const election = await Election.findById(req.params.id);
     if (!election) return res.status(404).json({ message: 'Election not found' });
-    const { name, description } = req.body;
+
+    const {
+      name, description, symbol,
+      rollNumber, course, year,
+      email, mobile, appliedPost,
+      attendance, disciplineRecord, approvalStatus,
+      plans, goals, slogan,
+      photo, collegeId, signature,
+    } = req.body;
+
     if (!name) return res.status(400).json({ message: 'Candidate name required' });
-    const candidate = await Candidate.create({ name, description, election: election._id });
+
+    const candidate = await Candidate.create({
+      name, description, symbol,
+      rollNumber, course, year,
+      email, mobile, appliedPost,
+      attendance, disciplineRecord: disciplineRecord || 'Good',
+      approvalStatus: approvalStatus || 'Pending',
+      plans, goals, slogan,
+      photo, collegeId, signature,
+      election: election._id,
+    });
+
     election.candidates.push(candidate._id);
     await election.save();
     res.status(201).json(candidate);

@@ -16,7 +16,7 @@ exports.register = async (req, res) => {
     return res.status(400).json({ message: errors.array()[0].msg });
 
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, branch, college, university, rollNo } = req.body;
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
 
@@ -25,8 +25,12 @@ exports.register = async (req, res) => {
 
     const user = await User.create({
       name, email, password,
+      branch:     branch     || '',
+      college:    college    || '',
+      university: university || '',
+      rollNo:     rollNo     || '',
       isVerified:  false,
-      isApproved:  false,  // pending admin approval
+      isApproved:  false,
       verificationToken,
       verificationExpiry,
     });
@@ -166,38 +170,201 @@ exports.setUserPassword = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// POST /api/auth/admin/register-user (admin)
+// POST /api/auth/admin/register-user (admin) — send OTP to verify real person
 exports.adminRegisterUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, branch, college, university, rollNo } = req.body;
     if (!name || !email || !password)
       return res.status(400).json({ message: 'All fields required' });
     const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: 'Email already registered' });
+    if (exists) {
+      if (!exists.isVerified) {
+        const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
+        const otp = generateOTP();
+        exists.otp       = otp;
+        exists.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+        await exists.save();
+        try { await sendOTPEmail(email, exists.name, otp); } catch {}
+        return res.json({
+          message: `OTP resent to ${email}. Ask user to verify.`,
+          userId: exists._id,
+          requiresOTP: true,
+        });
+      }
+      return res.status(400).json({ message: `Email "${email}" is already registered and verified.` });
+    }
+
+    const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
+    const otp = generateOTP();
+
     const user = await User.create({
       name, email, password,
+      branch:     branch     || '',
+      college:    college    || '',
+      university: university || '',
+      rollNo:     rollNo     || '',
       isAdmin:    false,
-      isVerified: true,
-      isApproved: true,  // admin-registered users auto-approved
+      isVerified: false,
+      isApproved: false,
+      otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
     });
+
+    // Send OTP email
+    try {
+      await sendOTPEmail(email, name, otp);
+    } catch (emailErr) {
+      console.error('OTP email failed:', emailErr.message);
+    }
+
     res.status(201).json({
-      _id:     user._id,
-      name:    user.name,
-      email:   user.email,
+      message: `OTP sent to ${email}. Ask user to verify with OTP.`,
+      userId:  user._id,
       voterId: user.voterId,
-      message: `User "${user.name}" registered with Voter ID: ${user.voterId}`,
+      requiresOTP: true,
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// PATCH /api/auth/profile — update own profile
+// POST /api/auth/verify-otp — user enters OTP to complete registration
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+    if (!userId || !otp)
+      return res.status(400).json({ message: 'userId and OTP required' });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!user.otp || user.otp !== otp)
+      return res.status(400).json({ message: 'Invalid OTP' });
+
+    if (new Date() > user.otpExpiry)
+      return res.status(400).json({ message: 'OTP expired. Ask admin to resend.' });
+
+    // OTP correct — verify and approve
+    user.isVerified = true;
+    user.isApproved = true;
+    user.otp        = null;
+    user.otpExpiry  = null;
+    await user.save();
+
+    res.json({
+      message: `✅ OTP verified! You can now login.`,
+      email:   user.email,
+      voterId: user.voterId,
+    });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/resend-otp — admin resends OTP
+exports.resendOTP = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.isVerified) return res.status(400).json({ message: 'Already verified' });
+
+    const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
+    const otp = generateOTP();
+    user.otp       = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    try { await sendOTPEmail(user.email, user.name, otp); } catch {}
+    res.json({ message: `OTP resent to ${user.email}` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// DELETE /api/auth/users/:id (admin) — delete user
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.isAdmin) return res.status(403).json({ message: 'Cannot delete admin user' });
+    await user.deleteOne();
+    res.json({ message: `User "${user.name}" deleted successfully` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, photo } = req.body;
+    const { name, photo, branch, college, university, rollNo } = req.body;
     const user = await User.findById(req.user._id);
-    if (name)  user.name  = name;
-    if (photo) user.photo = photo;
+    if (name)       user.name       = name;
+    if (photo)      user.photo      = photo;
+    if (branch      !== undefined) user.branch     = branch;
+    if (college     !== undefined) user.college    = college;
+    if (university  !== undefined) user.university = university;
+    if (rollNo      !== undefined) user.rollNo     = rollNo;
     await user.save();
-    res.json({ message: 'Profile updated', name: user.name, photo: user.photo });
+    res.json({ message: 'Profile updated' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/change-password — change password with old password
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword)
+      return res.status(400).json({ message: 'Both fields required' });
+    if (newPassword.length < 6)
+      return res.status(400).json({ message: 'New password min 6 characters' });
+
+    const user = await User.findById(req.user._id);
+    const match = await user.matchPassword(oldPassword);
+    if (!match)
+      return res.status(400).json({ message: 'Old password is incorrect' });
+
+    user.password = newPassword;
+    await user.save();
+    res.json({ message: '✅ Password changed successfully!' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/forgot-password — send OTP to email for password reset
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: 'Email not found' });
+
+    const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
+    const otp = generateOTP();
+    user.otp       = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+    await user.save();
+
+    try {
+      await sendOTPEmail(email, user.name, otp);
+    } catch (e) {
+      console.error('OTP email failed:', e.message);
+    }
+
+    res.json({ message: `OTP sent to ${email}`, userId: user._id });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/reset-password — verify OTP then set new password
+exports.resetPassword = async (req, res) => {
+  try {
+    const { userId, otp, newPassword } = req.body;
+    if (!userId || !otp || !newPassword)
+      return res.status(400).json({ message: 'All fields required' });
+    if (newPassword.length < 6)
+      return res.status(400).json({ message: 'Password min 6 characters' });
+
+    const user = await User.findById(userId);
+    if (!user)              return res.status(404).json({ message: 'User not found' });
+    if (!user.otp || user.otp !== otp)
+      return res.status(400).json({ message: 'Invalid OTP' });
+    if (new Date() > user.otpExpiry)
+      return res.status(400).json({ message: 'OTP expired. Request again.' });
+
+    user.password  = newPassword;
+    user.otp       = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    res.json({ message: '✅ Password reset successfully! You can now login.' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

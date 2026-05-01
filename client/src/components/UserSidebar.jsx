@@ -1,83 +1,151 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
+import Avatar from './Avatar.jsx';
 
 const menuItems = [
-  { path: '/dashboard',         icon: '🏠', label: 'Home / Dashboard' },
-  { path: '/dashboard/vote',    icon: '🗳️', label: 'Vote'             },
-  { path: '/dashboard/results', icon: '📊', label: 'Results'          },
-  { path: '/dashboard/profile', icon: '👤', label: 'Profile'          },
+  { path: '/dashboard',          icon: '🏠', label: 'Dashboard'  },
+  { path: '/dashboard/vote',     icon: '🗳️', label: 'Vote'       },
+  { path: '/dashboard/results',  icon: '📊', label: 'Results'    },
+  { path: '/dashboard/profile',  icon: '👤', label: 'Profile'    },
+  { path: '/dashboard/settings', icon: '⚙️', label: 'Settings'   },
 ];
 
 export default function UserSidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
+  const handleLogout = () => { logout(); navigate('/'); };
 
   const initials = user?.name
-    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
 
   return (
-    <aside className="w-64 min-h-screen bg-indigo-700 text-white flex flex-col">
+    <motion.aside
+      animate={{ width: collapsed ? 72 : 240 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="h-screen flex flex-col overflow-hidden flex-shrink-0 sidebar-3d"
+      style={{
+        background: 'linear-gradient(180deg, #0f172a 0%, #1a1040 50%, #0f172a 100%)',
+        borderRight: '1px solid rgba(99,102,241,0.15)',
+      }}>
 
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-indigo-600">
+      <div className="flex items-center justify-between px-4 py-5 border-b border-white/5">
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-10 }}
+              className="flex items-center gap-2.5">
+              <motion.div whileHover={{ rotate: 10, scale: 1.1 }}
+                className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm shadow-lg shadow-indigo-500/30">
+                🗳️
+              </motion.div>
+              <div>
+                <p className="text-white font-bold text-sm">VoteApp</p>
+                <p className="text-slate-500 text-xs">Voter Panel</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 flex-shrink-0">
+          <motion.span animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration:0.3 }}>◀</motion.span>
+        </motion.button>
+      </div>
+
+      {/* User card */}
+      <div className={`px-3 py-3 border-b border-white/5 ${collapsed ? 'flex justify-center' : ''}`}>
         <div className="flex items-center gap-3">
-          <span className="text-3xl">🗳️</span>
-          <div>
-            <p className="font-bold text-lg leading-tight">VoteApp</p>
-            <p className="text-indigo-300 text-xs">User Panel</p>
-          </div>
+          <motion.div whileHover={{ scale:1.08 }} className="flex-shrink-0">
+            <Avatar user={user} size={36}
+              style={{ borderRadius:12, boxShadow:'0 4px 12px rgba(99,102,241,0.3)', border:'2px solid rgba(99,102,241,0.4)' }} />
+          </motion.div>
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.div initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-10 }}
+                className="overflow-hidden">
+                <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-xs font-mono text-indigo-400">{user?.voterId}</span>
+                  {user?.isApproved && <span className="text-xs text-emerald-400">✓</span>}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* User Info */}
-      <div className="px-6 py-4 border-b border-indigo-600 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-sm">
-          {initials}
-        </div>
-        <div className="overflow-hidden">
-          <p className="text-sm font-semibold truncate">{user?.name}</p>
-          <p className="text-indigo-300 text-xs truncate">{user?.email}</p>
-        </div>
-      </div>
+      {/* Nav */}
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+        {menuItems.map((item, i) => (
+          <NavLink key={item.path} to={item.path} end={item.path === '/dashboard'}>
+            {({ isActive }) => (
+              <motion.div
+                initial={{ opacity:0, x:-16 }}
+                animate={{ opacity:1, x:0 }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ x: collapsed ? 0 : 4, scale: 1.01 }}
+                whileTap={{ scale: 0.97 }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all relative overflow-hidden cursor-pointer ${
+                  isActive ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+                style={isActive ? {
+                  background: 'linear-gradient(90deg, rgba(99,102,241,0.2), rgba(99,102,241,0.05))',
+                  borderLeft: '2px solid #6366f1',
+                  boxShadow:  'inset 0 0 20px rgba(99,102,241,0.08)',
+                } : {}}>
 
-      {/* Nav Menu */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/dashboard'}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
-                isActive
-                  ? 'bg-white text-indigo-700'
-                  : 'text-indigo-100 hover:bg-indigo-600 hover:text-white'
-              }`
-            }
-          >
-            <span className="text-base">{item.icon}</span>
-            {item.label}
+                {isActive && (
+                  <motion.div layoutId="userActiveGlow" className="absolute inset-0 rounded-xl"
+                    style={{ background:'radial-gradient(circle at 20% 50%, rgba(99,102,241,0.15), transparent 70%)' }} />
+                )}
+
+                <motion.span
+                  animate={isActive ? { scale:[1,1.2,1] } : {}}
+                  transition={{ duration:0.3 }}
+                  className="text-base flex-shrink-0 relative z-10">
+                  {item.icon}
+                </motion.span>
+
+                <AnimatePresence>
+                  {!collapsed && (
+                    <motion.span
+                      initial={{ opacity:0, width:0 }}
+                      animate={{ opacity:1, width:'auto' }}
+                      exit={{ opacity:0, width:0 }}
+                      className="text-sm font-medium whitespace-nowrap overflow-hidden relative z-10">
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
           </NavLink>
         ))}
       </nav>
 
       {/* Logout */}
-      <div className="px-3 py-4 border-t border-indigo-600">
-        <button
+      <div className="px-2 py-3 border-t border-white/5">
+        <motion.button
+          whileHover={{ x: collapsed ? 0 : 3, backgroundColor:'rgba(239,68,68,0.1)' }}
+          whileTap={{ scale:0.97 }}
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-red-300 hover:bg-red-900 hover:text-red-200 transition"
-        >
-          <span className="text-base">🚪</span>
-          Logout
-        </button>
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-red-300 transition-colors">
+          <span className="text-base flex-shrink-0">🚪</span>
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.span initial={{ opacity:0, width:0 }} animate={{ opacity:1, width:'auto' }} exit={{ opacity:0, width:0 }}
+                className="text-sm font-medium whitespace-nowrap overflow-hidden">
+                Logout
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }

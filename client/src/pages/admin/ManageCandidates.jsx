@@ -1,83 +1,79 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import api from '../../api/axios.jsx';
 import Spinner from '../../components/Spinner.jsx';
+
+const glass = { background:'rgba(255,255,255,0.04)', backdropFilter:'blur(16px)', border:'1px solid rgba(255,255,255,0.08)' };
+const inputCls = "w-full rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
+const inputStyle = { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' };
 
 export default function ManageCandidates() {
   const [elections, setElections] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [forms,     setForms]     = useState({});
-  const [msgs,      setMsgs]      = useState({}); // per-election messages
-  // Track which elections are "locked" (candidates finalized)
+  const [msgs,      setMsgs]      = useState({});
   const [locked,    setLocked]    = useState({});
 
   const fetchElections = () => {
     setLoading(true);
-    api.get('/elections')
-      .then(({ data }) => setElections(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.get('/elections').then(({ data }) => setElections(data)).catch(() => {}).finally(() => setLoading(false));
   };
-
   useEffect(() => { fetchElections(); }, []);
 
   const handleAdd = async (electionId) => {
     const f = forms[electionId] || {};
     if (!f.name?.trim()) return;
-
     try {
-      await api.post(`/elections/${electionId}/candidates`, {
-        name:        f.name.trim(),
-        description: f.description || '',
-      });
-      setForms((p) => ({ ...p, [electionId]: { name: '', description: '' } }));
-      setMsgs((p) => ({ ...p, [electionId]: { type: 'success', text: `✅ Candidate "${f.name}" added!` } }));
+      await api.post(`/elections/${electionId}/candidates`, { name: f.name.trim(), description: f.description || '' });
+      setForms(p => ({ ...p, [electionId]: { name:'', description:'' } }));
+      setMsgs(p => ({ ...p, [electionId]: { type:'success', text:`✅ "${f.name}" added!` } }));
       fetchElections();
     } catch (err) {
-      setMsgs((p) => ({ ...p, [electionId]: { type: 'error', text: `❌ ${err.response?.data?.message || 'Error adding candidate'}` } }));
+      setMsgs(p => ({ ...p, [electionId]: { type:'error', text:`❌ ${err.response?.data?.message || 'Error'}` } }));
     }
   };
 
-  // Lock election — no more candidates can be added
   const handleLock = (electionId, title) => {
-    if (!window.confirm(`Lock "${title}"? No more candidates can be added after this.`)) return;
-    setLocked((p) => ({ ...p, [electionId]: true }));
-    setMsgs((p) => ({ ...p, [electionId]: { type: 'success', text: '🔒 Candidates finalized!' } }));
+    if (!window.confirm(`Lock "${title}"? No more candidates after this.`)) return;
+    setLocked(p => ({ ...p, [electionId]: true }));
+    setMsgs(p => ({ ...p, [electionId]: { type:'success', text:'🔒 Candidates finalized!' } }));
   };
 
   if (loading) return <Spinner />;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Manage Candidates</h1>
+    <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.4 }}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white">Manage Candidates</h1>
+        <p className="text-slate-500 text-sm mt-1">Add candidates to existing elections</p>
+      </div>
+
       <div className="space-y-5">
-        {elections.map((election) => {
+        {elections.map((election, idx) => {
           const isLocked = locked[election._id];
           const msg      = msgs[election._id];
-
           return (
-            <div key={election._id} className="bg-white rounded-xl shadow p-5">
+            <motion.div key={election._id} initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }}
+              transition={{ duration:0.3, delay:idx*0.05 }} style={glass} className="rounded-2xl p-5">
 
               {/* Header */}
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                  🗳️ {election.title}
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${election.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {election.isActive ? 'Active' : 'Closed'}
-                  </span>
-                  {isLocked && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">
-                      🔒 Locked
-                    </span>
-                  )}
-                </h2>
-                {/* Lock button */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-semibold text-white">🗳️ {election.title}</h2>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    election.isActive
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-white/5 text-slate-400 border border-white/10'
+                  }`}>{election.isActive ? 'Active' : 'Closed'}</span>
+                  {isLocked && <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">🔒 Locked</span>}
+                </div>
                 {!isLocked && election.candidates.length >= 2 && (
-                  <button
+                  <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                     onClick={() => handleLock(election._id, election.title)}
-                    className="text-xs px-3 py-1 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200 transition font-medium"
-                  >
-                    🔒 Finalize Candidates
-                  </button>
+                    className="text-xs px-3 py-1.5 rounded-lg text-amber-400 font-medium transition"
+                    style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)' }}>
+                    🔒 Finalize
+                  </motion.button>
                 )}
               </div>
 
@@ -85,28 +81,28 @@ export default function ManageCandidates() {
               {msg && (
                 <div className={`text-xs px-3 py-2 rounded-lg mb-3 ${
                   msg.type === 'success'
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-red-50 text-red-600 border border-red-200'
-                }`}>
-                  {msg.text}
-                </div>
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                }`}>{msg.text}</div>
               )}
 
-              {/* Candidates list */}
+              {/* Candidates */}
               {election.candidates.length === 0 ? (
-                <p className="text-sm text-gray-400 mb-3">No candidates yet.</p>
+                <p className="text-sm text-slate-600 mb-3">No candidates yet.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {election.candidates.map((c, i) => (
-                    <div key={c._id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div key={c._id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                      style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 font-bold">#{i + 1}</span>
+                        <span className="text-xs text-slate-600 font-bold w-5">#{i+1}</span>
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{c.name}</p>
-                          {c.description && <p className="text-xs text-gray-400">{c.description}</p>}
+                          <p className="text-sm font-medium text-slate-200">{c.name}</p>
+                          {c.description && <p className="text-xs text-slate-500">{c.description}</p>}
+                          {c.appliedPost && <p className="text-xs text-violet-400">{c.appliedPost}</p>}
                         </div>
                       </div>
-                      <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
                         {c.votes} votes
                       </span>
                     </div>
@@ -114,40 +110,40 @@ export default function ManageCandidates() {
                 </div>
               )}
 
-              {/* Add candidate — hidden if locked */}
+              {/* Add form */}
               {isLocked ? (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-500 text-center">
-                  🔒 Candidates are finalized. No more additions allowed.
+                <div className="rounded-xl px-4 py-3 text-sm text-slate-500 text-center"
+                  style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                  🔒 Candidates finalized. No more additions allowed.
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <input
-                    placeholder="Candidate name *"
+                  <input placeholder="Candidate name *"
                     value={forms[election._id]?.name || ''}
-                    onChange={(e) => setForms((p) => ({ ...p, [election._id]: { ...p[election._id], name: e.target.value } }))}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <input
-                    placeholder="Description (optional)"
+                    onChange={e => setForms(p => ({ ...p, [election._id]: { ...p[election._id], name:e.target.value } }))}
+                    className={`flex-1 ${inputCls}`} style={inputStyle} />
+                  <input placeholder="Description (optional)"
                     value={forms[election._id]?.description || ''}
-                    onChange={(e) => setForms((p) => ({ ...p, [election._id]: { ...p[election._id], description: e.target.value } }))}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <button
+                    onChange={e => setForms(p => ({ ...p, [election._id]: { ...p[election._id], description:e.target.value } }))}
+                    className={`flex-1 ${inputCls}`} style={inputStyle} />
+                  <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                     onClick={() => handleAdd(election._id)}
-                    className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
-                  >
+                    className="text-white px-4 py-2 rounded-xl text-sm font-medium transition"
+                    style={{ background:'linear-gradient(135deg,#3b82f6,#1e40af)', boxShadow:'0 4px 15px rgba(59,130,246,0.3)' }}>
                     Add
-                  </button>
+                  </motion.button>
                 </div>
               )}
-            </div>
+            </motion.div>
           );
         })}
         {elections.length === 0 && (
-          <p className="text-gray-400 text-center py-10">No elections found. Create one first.</p>
+          <div className="text-center py-16 text-slate-600">
+            <p className="text-4xl mb-3">🙋</p>
+            <p>No elections found. Create one first.</p>
+          </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

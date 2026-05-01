@@ -27,10 +27,16 @@ router.get('/verify-email',         ctrl.verifyEmail);
 router.post('/resend-verification', rateLimiter(3, 60*60*1000), ctrl.resendVerification);
 router.get('/me',                   protect, ctrl.getMe);
 router.patch('/profile',            protect, ctrl.updateProfile);
+router.post('/change-password',     protect, ctrl.changePassword);
+router.post('/forgot-password',     ctrl.forgotPassword);
+router.post('/reset-password',      ctrl.resetPassword);
 router.get('/users',                protect, adminOnly, ctrl.getUsers);
 router.patch('/users/:id/approve',  protect, adminOnly, ctrl.approveUser);
 router.patch('/users/:id/reject',   protect, adminOnly, ctrl.rejectUser);
 router.patch('/users/:id/password', protect, adminOnly, ctrl.setUserPassword);
+router.delete('/users/:id',         protect, adminOnly, ctrl.deleteUser);
 router.post('/admin/register-user', protect, adminOnly, ctrl.adminRegisterUser);
+router.post('/verify-otp',         ctrl.verifyOTP);
+router.post('/resend-otp',         ctrl.resendOTP);
 
 module.exports = router;

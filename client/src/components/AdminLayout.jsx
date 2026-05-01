@@ -1,43 +1,129 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import AdminSidebar from './AdminSidebar.jsx';
+import NotificationDropdown from './NotificationDropdown.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import Avatar from './Avatar.jsx';
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notifOpen,   setNotifOpen]   = useState(false);
+  const bellRef = useRef(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const unreadCount = 2;
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex h-screen overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}>
 
-      {/* Sidebar — desktop always visible, mobile toggle */}
-      <div className={`fixed inset-y-0 left-0 z-40 transform transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0 md:flex md:flex-shrink-0`}>
+      {/* Notification Portal */}
+      <NotificationDropdown
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        anchorRef={bellRef}
+      />
+
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex flex-shrink-0">
         <AdminSidebar />
       </div>
 
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-40 z-30 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Mobile Sidebar */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
+              onClick={() => setSidebarOpen(false)} />
+            <motion.div
+              initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed left-0 top-0 bottom-0 z-50 md:hidden">
+              <AdminSidebar />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile topbar */}
-        <div className="md:hidden bg-indigo-700 text-white px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <span className="font-bold text-lg">🗳️ VoteApp Admin</span>
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Top Navbar */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b"
+          style={{
+            background: 'rgba(15,23,42,0.8)',
+            backdropFilter: 'blur(20px)',
+            borderColor: 'rgba(99,102,241,0.1)',
+          }}>
+
+          {/* Left */}
+          <div className="flex items-center gap-3">
+            <motion.button
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-400">
+              ☰
+            </motion.button>
+
+            {/* Search */}
+            <div className="hidden sm:flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2 w-56">
+              <span className="text-slate-500 text-sm">🔍</span>
+              <input placeholder="Search..."
+                className="bg-transparent text-sm text-slate-300 placeholder-slate-600 focus:outline-none w-full" />
+            </div>
+          </div>
+
+          {/* Right */}
+          <div className="flex items-center gap-2">
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <motion.button
+                ref={bellRef}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                animate={unreadCount > 0 ? { rotate: [0, -8, 8, -8, 8, 0] } : {}}
+                transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 4 }}
+                onClick={() => setNotifOpen(p => !p)}
+                onMouseEnter={() => setNotifOpen(true)}
+                className="relative w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 transition-colors">
+                🔔
+                {unreadCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold">
+                    {unreadCount}
+                  </motion.span>
+                )}
+              </motion.button>
+            </div>
+
+            {/* Admin profile */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/admin/settings')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
+              <Avatar user={user} size={28}
+                style={{ borderRadius:8, border:'1px solid rgba(59,130,246,0.4)' }} />
+              <span className="text-sm text-slate-300 hidden sm:block">{user?.name}</span>
+            </motion.button>
+          </div>
         </div>
 
         {/* Page content */}
-        <main className="flex-1 p-6 overflow-auto">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-5">
+          <motion.div
+            key={window.location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}>
+            <Outlet />
+          </motion.div>
         </main>
       </div>
     </div>
