@@ -16,7 +16,15 @@ const userSchema = new mongoose.Schema(
     branch:     { type: String, default: '' },
     college:    { type: String, default: '' },
     university: { type: String, default: '' },
-    rollNo:     { type: String, default: '' },
+    rollNo:     { type: String, default: '', index: { unique: true, sparse: true, partialFilterExpression: { rollNo: { $gt: '' } } } },
+
+    // Contact
+    phone:      { type: String, default: '', index: { unique: true, sparse: true, partialFilterExpression: { phone: { $gt: '' } } } },
+    phoneVerified: { type: Boolean, default: false },
+
+    // Phone OTP
+    phoneOtp:       { type: String, default: null },
+    phoneOtpExpiry: { type: Date,   default: null },
 
     // Status
     isVerified: { type: Boolean, default: false },
@@ -31,6 +39,10 @@ const userSchema = new mongoose.Schema(
     // OTP for admin-registered users
     otp:         { type: String,  default: null },
     otpExpiry:   { type: Date,    default: null },
+
+    // OTP brute-force protection
+    otpAttempts:   { type: Number, default: 0 },
+    otpLockedUntil:{ type: Date,   default: null },
   },
   { timestamps: true }
 );

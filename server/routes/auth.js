@@ -36,7 +36,9 @@ router.patch('/users/:id/reject',   protect, adminOnly, ctrl.rejectUser);
 router.patch('/users/:id/password', protect, adminOnly, ctrl.setUserPassword);
 router.delete('/users/:id',         protect, adminOnly, ctrl.deleteUser);
 router.post('/admin/register-user', protect, adminOnly, ctrl.adminRegisterUser);
-router.post('/verify-otp',         ctrl.verifyOTP);
-router.post('/resend-otp',         ctrl.resendOTP);
+router.post('/verify-otp',          ctrl.verifyOTP);
+router.post('/resend-otp',          ctrl.resendOTP);
+router.post('/verify-phone-otp',    ctrl.verifyPhoneOTP);
+router.post('/resend-phone-otp',    protect, adminOnly, ctrl.resendPhoneOTP);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 const express  = require('express');
 const { body } = require('express-validator');
 const ctrl     = require('../controllers/voteController');
-const { protect } = require('../middleware/auth');
+const { protect, adminOnly } = require('../middleware/auth');
 const validate    = require('../middleware/validate');
 const rateLimiter = require('../middleware/rateLimiter');
 
@@ -26,5 +26,7 @@ router.post('/',
 
 router.get('/results/:electionId', ctrl.getResults);
 router.get('/blockchain',          protect, ctrl.getBlockchain);
+router.get('/audit',               protect, adminOnly, ctrl.getAuditLogs);
+router.get('/dashboard-stats',     protect, adminOnly, ctrl.getDashboardStats);
 
 module.exports = router;

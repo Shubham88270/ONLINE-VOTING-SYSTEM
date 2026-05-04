@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const Election  = require('../models/Election');
 const Candidate = require('../models/Candidate');
+const { logAudit } = require('../utils/audit');
 
 const autoExpire = async () => {
   await Election.updateMany({ endDate: { $lt: new Date() }, isActive: true }, { $set: { isActive: false } });
@@ -29,6 +30,15 @@ exports.createElection = async (req, res) => {
   try {
     const { title, description, startDate, endDate } = req.body;
     const election = await Election.create({ title, description, startDate: startDate || Date.now(), endDate: endDate || null, createdBy: req.user._id });
+
+    await logAudit('ELECTION_CREATED', {
+      actorId:  req.user._id,
+      actor:    'admin',
+      target:   title,
+      targetId: election._id,
+      ip:       req.ip || '',
+    });
+
     res.status(201).json(election);
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -72,6 +82,16 @@ exports.toggleElection = async (req, res) => {
     if (!election) return res.status(404).json({ message: 'Election not found' });
     election.isActive = !election.isActive;
     await election.save();
+
+    await logAudit(election.isActive ? 'ELECTION_ACTIVATED' : 'ELECTION_DEACTIVATED', {
+      actorId:  req.user._id,
+      actor:    'admin',
+      target:   election.title,
+      targetId: election._id,
+      ip:       req.ip || '',
+      meta:     { isActive: election.isActive },
+    });
+
     res.json(election);
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -82,6 +102,15 @@ exports.deleteElection = async (req, res) => {
     if (!election) return res.status(404).json({ message: 'Election not found' });
     await Candidate.deleteMany({ election: election._id });
     await election.deleteOne();
+
+    await logAudit('ELECTION_DELETED', {
+      actorId:  req.user._id,
+      actor:    'admin',
+      target:   election.title,
+      targetId: election._id,
+      ip:       req.ip || '',
+    });
+
     res.json({ message: 'Election deleted' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

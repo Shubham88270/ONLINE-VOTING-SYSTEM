@@ -3,6 +3,7 @@ const crypto   = require('crypto');
 const { validationResult } = require('express-validator');
 const User     = require('../models/User');
 const { sendVerificationEmail } = require('../utils/sendEmail');
+const { logAudit } = require('../utils/audit');
 
 const generateToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -36,6 +37,16 @@ exports.register = async (req, res) => {
     });
 
     try { await sendVerificationEmail(email, name, verificationToken); } catch {}
+
+    // Notify admin — new voter registered
+    try {
+      const io = req.app.get('io');
+      if (io) io.to('admin').emit('adminNotification', {
+        icon:  '👤',
+        title: 'New voter registered',
+        desc:  `${name} (${email}) registered and needs approval.`,
+      });
+    } catch {}
 
     res.status(201).json({
       message: `Registration successful! Check your email to verify. Your Voter ID is: ${user.voterId}`,
@@ -87,14 +98,26 @@ exports.login = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
+    if (!token) return res.status(400).json({ message: 'Verification token missing' });
+
+    // Check if already verified (token reuse attempt)
+    const alreadyVerified = await User.findOne({ isVerified: true, verificationToken: null });
+
     const user = await User.findOne({
       verificationToken:  token,
       verificationExpiry: { $gt: new Date() },
     });
-    if (!user) return res.status(400).json({ message: 'Invalid or expired link' });
+
+    if (!user) {
+      // Distinguish between expired and already-used
+      const usedUser = await User.findOne({ isVerified: true });
+      return res.status(400).redirect(
+        `${process.env.CLIENT_URL}/auth?error=link_invalid`
+      );
+    }
 
     user.isVerified         = true;
-    user.verificationToken  = null;
+    user.verificationToken  = null;   // single-use: invalidate immediately
     user.verificationExpiry = null;
     await user.save();
     res.redirect(`${process.env.CLIENT_URL}/auth?verified=true`);
@@ -141,7 +164,27 @@ exports.approveUser = async (req, res) => {
     user.verificationToken  = null;  // clear pending token
     user.verificationExpiry = null;
     await user.save();
+
+    // Notify admin room
+    try {
+      const io = req.app.get('io');
+      if (io) io.to('admin').emit('adminNotification', {
+        icon:  '✅',
+        title: 'Voter approved',
+        desc:  `${user.name} (${user.email}) has been approved to vote.`,
+      });
+    } catch {}
+
     res.json({ message: `${user.name} approved successfully`, user });
+
+    // Audit log
+    await logAudit('USER_APPROVED', {
+      actorId:  req.user._id,
+      actor:    'admin',
+      target:   user.name,
+      targetId: user._id,
+      ip:       req.ip || '',
+    });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
@@ -173,16 +216,40 @@ exports.setUserPassword = async (req, res) => {
 // POST /api/auth/admin/register-user (admin) — send OTP to verify real person
 exports.adminRegisterUser = async (req, res) => {
   try {
-    const { name, email, password, branch, college, university, rollNo } = req.body;
+    const { name, email, password, branch, college, university, rollNo, phone } = req.body;
     if (!name || !email || !password)
       return res.status(400).json({ message: 'All fields required' });
+
+    // ── Strong password validation ──────────────────────────
+    const strongPw = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#$%^&*!]).{8,}$/;
+    if (!strongPw.test(password))
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and special character (@#$%^&*!)',
+      });
+
+    // ── Phone validation ────────────────────────────────────
+    if (phone && phone.trim()) {
+      if (!/^\d{10}$/.test(phone.trim()))
+        return res.status(400).json({ message: 'Phone number must be exactly 10 digits.' });
+      const phoneExists = await User.findOne({ phone: phone.trim() });
+      if (phoneExists)
+        return res.status(400).json({ message: `Phone number "${phone}" is already registered.` });
+    }
+
+    // ── Duplicate Roll No check ─────────────────────────────
+    if (rollNo && rollNo.trim()) {
+      const rollExists = await User.findOne({ rollNo: rollNo.trim() });
+      if (rollExists)
+        return res.status(400).json({ message: `Roll No "${rollNo}" is already registered.` });
+    }
+
     const exists = await User.findOne({ email });
     if (exists) {
       if (!exists.isVerified) {
         const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
         const otp = generateOTP();
         exists.otp       = otp;
-        exists.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+        exists.otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
         await exists.save();
         try { await sendOTPEmail(email, exists.name, otp); } catch {}
         return res.json({
@@ -203,25 +270,43 @@ exports.adminRegisterUser = async (req, res) => {
       college:    college    || '',
       university: university || '',
       rollNo:     rollNo     || '',
+      phone:      phone      || '',
       isAdmin:    false,
       isVerified: false,
       isApproved: false,
       otp,
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+      otpExpiry: new Date(Date.now() + 3 * 60 * 1000),
     });
 
-    // Send OTP email
+    // Send email OTP
     try {
       await sendOTPEmail(email, name, otp);
     } catch (emailErr) {
       console.error('OTP email failed:', emailErr.message);
     }
 
+    // If phone provided, generate & store phone OTP (sent via email for now)
+    let phoneOtpSent = false;
+    if (phone && phone.trim()) {
+      const { generateOTP: genPhoneOTP } = require('../utils/sendOTP');
+      const phoneOtp = genPhoneOTP();
+      user.phoneOtp       = phoneOtp;
+      user.phoneOtpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+      await user.save();
+      // Send phone OTP via email (SMS gateway can replace this later)
+      try {
+        await sendOTPEmail(email, name, phoneOtp, true);
+        phoneOtpSent = true;
+      } catch {}
+    }
+
     res.status(201).json({
-      message: `OTP sent to ${email}. Ask user to verify with OTP.`,
-      userId:  user._id,
-      voterId: user.voterId,
-      requiresOTP: true,
+      message:      `OTP sent to ${email}. Ask user to verify with OTP.`,
+      userId:       user._id,
+      voterId:      user.voterId,
+      requiresOTP:  true,
+      hasPhone:     !!(phone && phone.trim()),
+      phoneOtpSent,
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -236,17 +321,43 @@ exports.verifyOTP = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (!user.otp || user.otp !== otp)
-      return res.status(400).json({ message: 'Invalid OTP' });
+    // ── Lockout check ───────────────────────────────────────
+    if (user.otpLockedUntil && new Date() < user.otpLockedUntil) {
+      const remaining = Math.ceil((user.otpLockedUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        message: `Too many failed attempts. Try again in ${remaining} minute(s).`,
+      });
+    }
 
-    if (new Date() > user.otpExpiry)
+    // ── Expiry check ────────────────────────────────────────
+    if (!user.otp || new Date() > user.otpExpiry) {
       return res.status(400).json({ message: 'OTP expired. Ask admin to resend.' });
+    }
 
-    // OTP correct — verify and approve
-    user.isVerified = true;
-    user.isApproved = true;
-    user.otp        = null;
-    user.otpExpiry  = null;
+    // ── Wrong OTP ───────────────────────────────────────────
+    if (user.otp !== otp) {
+      user.otpAttempts = (user.otpAttempts || 0) + 1;
+      if (user.otpAttempts >= 5) {
+        user.otpLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lockout
+        user.otpAttempts    = 0;
+        await user.save();
+        return res.status(429).json({
+          message: 'Too many failed attempts. Account locked for 15 minutes.',
+        });
+      }
+      await user.save();
+      return res.status(400).json({
+        message: `Invalid OTP. ${5 - user.otpAttempts} attempt(s) remaining.`,
+      });
+    }
+
+    // ── OTP correct — verify and approve ───────────────────
+    user.isVerified     = true;
+    user.isApproved     = true;
+    user.otp            = null;
+    user.otpExpiry      = null;
+    user.otpAttempts    = 0;
+    user.otpLockedUntil = null;
     await user.save();
 
     res.json({
@@ -254,6 +365,50 @@ exports.verifyOTP = async (req, res) => {
       email:   user.email,
       voterId: user.voterId,
     });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/verify-phone-otp — verify phone OTP
+exports.verifyPhoneOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+    if (!userId || !otp)
+      return res.status(400).json({ message: 'userId and OTP required' });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!user.phoneOtp || user.phoneOtp !== otp)
+      return res.status(400).json({ message: 'Invalid phone OTP' });
+
+    if (new Date() > user.phoneOtpExpiry)
+      return res.status(400).json({ message: 'Phone OTP expired. Ask admin to resend.' });
+
+    user.phoneVerified  = true;
+    user.phoneOtp       = null;
+    user.phoneOtpExpiry = null;
+    await user.save();
+
+    res.json({ message: '✅ Phone number verified successfully!' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// POST /api/auth/resend-phone-otp — resend phone OTP
+exports.resendPhoneOTP = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user.phone) return res.status(400).json({ message: 'No phone number on file' });
+
+    const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
+    const otp = generateOTP();
+    user.phoneOtp       = otp;
+    user.phoneOtpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+    await user.save();
+
+    try { await sendOTPEmail(user.email, user.name, otp, true); } catch {}
+    res.json({ message: `Phone OTP resent to ${user.email}` });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
@@ -268,7 +423,7 @@ exports.resendOTP = async (req, res) => {
     const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
     const otp = generateOTP();
     user.otp       = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    user.otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
     await user.save();
 
     try { await sendOTPEmail(user.email, user.name, otp); } catch {}
@@ -331,7 +486,7 @@ exports.forgotPassword = async (req, res) => {
     const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
     const otp = generateOTP();
     user.otp       = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+    user.otpExpiry = new Date(Date.now() + 3 * 60 * 1000); // 3 min
     await user.save();
 
     try {
