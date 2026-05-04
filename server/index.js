@@ -22,12 +22,28 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({
-  origin: [
-    process.env.CLIENT_URL || 'http://localhost:3000',
-    'http://localhost:3000',
-  ],
+  origin: function (origin, callback) {
+    const allowed = [
+      'http://localhost:3000',
+      'https://online-voting-system-k1j4.onrender.com',
+      'https://online-voting-system-btw1m28pr-shubham88270s-projects.vercel.app',
+      'https://online-voting-system-sigma-puce.vercel.app',
+      process.env.CLIENT_URL,
+    ].filter(Boolean);
+
+    // Allow requests with no origin (Postman, mobile, server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`));
+    }
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' })); // 10mb for base64 photos
