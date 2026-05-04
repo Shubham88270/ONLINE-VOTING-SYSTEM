@@ -8,7 +8,29 @@ const glass = { background:'rgba(255,255,255,0.04)', backdropFilter:'blur(16px)'
 const inputCls = "w-full rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition";
 const inputStyle = { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' };
 
-const emptyUser = () => ({ name:'', email:'', password:'', showPw:false, branch:'', college:'', university:'', rollNo:'' });
+const emptyUser = () => ({ name:'', email:'', password:'', showPw:false, branch:'', college:'', university:'', rollNo:'', phone:'' });
+
+// ── Password strength checker ─────────────────────────────
+function getPwStrength(pw) {
+  if (!pw) return { score: 0, label: '', color: '' };
+  const checks = {
+    upper:   /[A-Z]/.test(pw),
+    lower:   /[a-z]/.test(pw),
+    number:  /\d/.test(pw),
+    special: /[@#$%^&*!]/.test(pw),
+    length:  pw.length >= 8,
+  };
+  const score = Object.values(checks).filter(Boolean).length;
+  const map = [
+    { label: '',         color: '' },
+    { label: 'Very Weak', color: '#ef4444' },
+    { label: 'Weak',      color: '#f97316' },
+    { label: 'Fair',      color: '#eab308' },
+    { label: 'Good',      color: '#3b82f6' },
+    { label: 'Strong',    color: '#10b981' },
+  ];
+  return { score, ...map[score], checks };
+}
 
 export default function ManageUsers() {
   const [users,      setUsers]      = useState([]);
@@ -16,7 +38,7 @@ export default function ManageUsers() {
   const [rows,       setRows]       = useState([emptyUser()]);
   const [regLoading, setRegLoading] = useState(false);
   const [tab,        setTab]        = useState('all');
-  const [otpModal,   setOtpModal]   = useState(null);
+  const [otpModal,   setOtpModal]   = useState(null);  // { userId, email, name, hasPhone, step:'email'|'phone' }
   const [otpValue,   setOtpValue]   = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpMsg,     setOtpMsg]     = useState('');
@@ -47,15 +69,44 @@ export default function ManageUsers() {
 
   const handleRegisterAll = async (e) => {
     e.preventDefault();
-    const valid = rows.filter(r => r.name.trim() && r.email.trim() && r.password.length >= 6);
+    const strongPw = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#$%^&*!]).{8,}$/;
+
+    // Client-side validation
+    for (let idx = 0; idx < rows.length; idx++) {
+      const r = rows[idx];
+      if (!r.name.trim() || !r.email.trim() || !r.password) continue; // skip empty rows
+      if (!strongPw.test(r.password)) {
+        return toast.error(`User #${idx+1}: Password must have uppercase, lowercase, number & special char (@#$%^&*!), min 8 chars`);
+      }
+      if (r.phone && !/^\d{10}$/.test(r.phone.trim())) {
+        return toast.error(`User #${idx+1}: Phone number must be exactly 10 digits`);
+      }
+    }
+
+    // Check duplicate rollNo within the form rows
+    const rollNos = rows.map(r => r.rollNo.trim()).filter(Boolean);
+    const uniqueRolls = new Set(rollNos);
+    if (uniqueRolls.size !== rollNos.length)
+      return toast.error('Duplicate Roll No found in the form. Each Roll No must be unique.');
+
+    // Check duplicate phone within the form rows
+    const phones = rows.map(r => r.phone.trim()).filter(Boolean);
+    const uniquePhones = new Set(phones);
+    if (uniquePhones.size !== phones.length)
+      return toast.error('Duplicate Phone No found in the form. Each phone must be unique.');
+
+    const valid = rows.filter(r => r.name.trim() && r.email.trim() && r.password.length >= 8);
     if (!valid.length) return toast.error('Fill at least one complete row');
     setRegLoading(true);
     let ok = 0;
     for (const r of valid) {
       try {
-        const { data } = await api.post('/auth/admin/register-user', { name:r.name, email:r.email, password:r.password, branch:r.branch, college:r.college, university:r.university, rollNo:r.rollNo });
+        const { data } = await api.post('/auth/admin/register-user', { name:r.name, email:r.email, password:r.password, branch:r.branch, college:r.college, university:r.university, rollNo:r.rollNo, phone:r.phone });
         ok++;
-        if (data.requiresOTP) { setOtpModal({ userId:data.userId, email:r.email, name:r.name }); setOtpValue(''); setOtpMsg(''); }
+        if (data.requiresOTP) {
+          setOtpModal({ userId:data.userId, email:r.email, name:r.name, hasPhone:data.hasPhone, step:'email' });
+          setOtpValue(''); setOtpMsg('');
+        }
       } catch (err) { toast.error(`${r.email}: ${err.response?.data?.message || 'Error'}`); }
     }
     if (ok) { setRows([emptyUser()]); fetchUsers(); }
@@ -67,15 +118,39 @@ export default function ManageUsers() {
     setOtpLoading(true);
     try {
       const { data } = await api.post('/auth/verify-otp', { userId:otpModal.userId, otp:otpValue });
-      toast.success(`✅ ${otpModal.name} verified! ID: ${data.voterId}`);
-      setOtpModal(null); setOtpValue(''); fetchUsers();
+      toast.success(`✅ ${otpModal.name} email verified! ID: ${data.voterId}`);
+      // If user has phone, move to phone OTP step
+      if (otpModal.hasPhone) {
+        setOtpModal(prev => ({ ...prev, step:'phone' }));
+        setOtpValue(''); setOtpMsg('📱 Now verify phone number OTP sent to email.');
+      } else {
+        setOtpModal(null); setOtpValue(''); fetchUsers();
+      }
     } catch (err) { setOtpMsg(err.response?.data?.message || '❌ Invalid OTP'); }
     finally { setOtpLoading(false); }
   };
 
+  const handleVerifyPhoneOTP = async () => {
+    if (otpValue.length !== 6) return setOtpMsg('❌ Enter 6-digit phone OTP');
+    setOtpLoading(true);
+    try {
+      await api.post('/auth/verify-phone-otp', { userId:otpModal.userId, otp:otpValue });
+      toast.success(`✅ ${otpModal.name} phone verified!`);
+      setOtpModal(null); setOtpValue(''); fetchUsers();
+    } catch (err) { setOtpMsg(err.response?.data?.message || '❌ Invalid phone OTP'); }
+    finally { setOtpLoading(false); }
+  };
+
   const handleResendOTP = async () => {
-    try { await api.post('/auth/resend-otp', { userId:otpModal.userId }); setOtpMsg('✅ OTP resent!'); }
-    catch (err) { setOtpMsg(err.response?.data?.message || 'Failed'); }
+    try {
+      if (otpModal.step === 'phone') {
+        await api.post('/auth/resend-phone-otp', { userId:otpModal.userId });
+        setOtpMsg('✅ Phone OTP resent to email!');
+      } else {
+        await api.post('/auth/resend-otp', { userId:otpModal.userId });
+        setOtpMsg('✅ Email OTP resent!');
+      }
+    } catch (err) { setOtpMsg(err.response?.data?.message || 'Failed'); }
   };
 
   if (loading) return <Spinner />;
@@ -133,13 +208,82 @@ export default function ManageUsers() {
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">Password *</label>
                   <div className="relative">
-                    <input type={row.showPw ? 'text' : 'password'} value={row.password} onChange={e => updateRow(i,'password',e.target.value)} placeholder="Min 6 chars" className={`${inputCls} pr-8`} style={inputStyle} />
+                    <input type={row.showPw ? 'text' : 'password'} value={row.password} onChange={e => updateRow(i,'password',e.target.value)} placeholder="Min 8 chars, A-Z a-z 0-9 @#$%" className={`${inputCls} pr-8`} style={inputStyle} />
                     <button type="button" onClick={() => updateRow(i,'showPw',!row.showPw)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs">{row.showPw ? '🙈' : '👁️'}</button>
                   </div>
+                  {/* Strength bar */}
+                  {row.password && (() => {
+                    const s = getPwStrength(row.password);
+                    return (
+                      <div className="mt-1.5 space-y-1">
+                        <div className="flex gap-1">
+                          {[1,2,3,4,5].map(n => (
+                            <div key={n} className="h-1 flex-1 rounded-full transition-all duration-300"
+                              style={{ background: n <= s.score ? s.color : 'rgba(255,255,255,0.08)' }} />
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium" style={{ color: s.color }}>{s.label}</span>
+                          <div className="flex gap-2">
+                            {[
+                              { key:'upper',   label:'A-Z' },
+                              { key:'lower',   label:'a-z' },
+                              { key:'number',  label:'0-9' },
+                              { key:'special', label:'@#$%' },
+                              { key:'length',  label:'8+' },
+                            ].map(c => (
+                              <span key={c.key} className="text-xs px-1.5 py-0.5 rounded font-mono"
+                                style={{
+                                  background: s.checks?.[c.key] ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
+                                  color:      s.checks?.[c.key] ? '#6ee7b7' : '#475569',
+                                  border:     `1px solid ${s.checks?.[c.key] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                                }}>
+                                {s.checks?.[c.key] ? '✓' : '·'} {c.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">Roll No</label>
-                  <input value={row.rollNo} onChange={e => updateRow(i,'rollNo',e.target.value)} placeholder="2021CS001" className={inputCls} style={inputStyle} />
+                  <input value={row.rollNo} onChange={e => updateRow(i,'rollNo',e.target.value)} placeholder="2021CS001" className={inputCls} style={{
+                    ...inputStyle,
+                    borderColor: row.rollNo && rows.filter((r,ri) => ri !== i && r.rollNo.trim() && r.rollNo.trim() === row.rollNo.trim()).length > 0
+                      ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.1)',
+                  }} />
+                  {row.rollNo && rows.filter((r,ri) => ri !== i && r.rollNo.trim() === row.rollNo.trim()).length > 0 && (
+                    <p className="text-xs text-red-400 mt-1">⚠️ Duplicate Roll No in this form</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Phone No <span className="text-slate-600">(10 digits)</span></label>
+                  <input
+                    type="tel"
+                    value={row.phone}
+                    onChange={e => updateRow(i,'phone', e.target.value.replace(/\D/g,'').slice(0,10))}
+                    placeholder="9876543210"
+                    maxLength={10}
+                    className={inputCls}
+                    style={{
+                      ...inputStyle,
+                      borderColor: row.phone && row.phone.length > 0 && row.phone.length !== 10
+                        ? 'rgba(239,68,68,0.6)'
+                        : rows.filter((r,ri) => ri !== i && r.phone.trim() && r.phone.trim() === row.phone.trim()).length > 0
+                          ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.1)',
+                    }}
+                  />
+                  {row.phone.length > 0 && row.phone.length !== 10 && (
+                    <p className="text-xs text-red-400 mt-1">⚠️ Must be exactly 10 digits ({row.phone.length}/10)</p>
+                  )}
+                  {row.phone.length === 10 && rows.filter((r,ri) => ri !== i && r.phone.trim() === row.phone.trim()).length > 0 && (
+                    <p className="text-xs text-red-400 mt-1">⚠️ Duplicate phone in this form</p>
+                  )}
+                  {row.phone.length === 10 && (
+                    <p className="text-xs text-emerald-400 mt-1">✓ Valid phone number</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">Branch</label>
@@ -234,7 +378,8 @@ export default function ManageUsers() {
                       {u.college    && <p>🏫 {u.college}</p>}
                       {u.university && <p>🏛️ {u.university}</p>}
                       {u.rollNo     && <p>🔢 {u.rollNo}</p>}
-                      {!u.branch && !u.college && !u.university && !u.rollNo && <p className="text-slate-700">—</p>}
+                      {u.phone      && <p>📱 {u.phone} {u.phoneVerified ? <span className="text-emerald-400">✓</span> : <span className="text-amber-400">⏳</span>}</p>}
+                      {!u.branch && !u.college && !u.university && !u.rollNo && !u.phone && <p className="text-slate-700">—</p>}
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -297,25 +442,73 @@ export default function ManageUsers() {
             className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 backdrop-blur-sm">
             <motion.div initial={{ scale:0.9, y:20 }} animate={{ scale:1, y:0 }} exit={{ scale:0.9, y:20 }}
               className="rounded-2xl p-8 max-w-sm w-full text-center" style={{ background:'rgba(15,23,42,0.95)', border:'1px solid rgba(99,102,241,0.3)', boxShadow:'0 25px 60px rgba(0,0,0,0.5)' }}>
-              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-3xl mx-auto mb-4">📧</div>
-              <h3 className="text-xl font-bold text-white mb-1">OTP Verification</h3>
-              <p className="text-slate-500 text-sm mb-1">OTP sent to:</p>
-              <p className="text-blue-400 font-semibold mb-4">{otpModal.email}</p>
-              <p className="text-slate-600 text-xs mb-5">Ask <strong className="text-slate-400">{otpModal.name}</strong> to check their email and share the OTP.</p>
+
+              {/* Step indicator */}
+              {otpModal.hasPhone && (
+                <div className="flex items-center justify-center gap-2 mb-5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={{ background: otpModal.step === 'email' ? 'rgba(59,130,246,0.3)' : 'rgba(16,185,129,0.3)', border: `1px solid ${otpModal.step === 'email' ? '#3b82f6' : '#10b981'}`, color: otpModal.step === 'email' ? '#93c5fd' : '#6ee7b7' }}>
+                      {otpModal.step === 'email' ? '1' : '✓'}
+                    </div>
+                    <span className="text-xs text-slate-500">Email OTP</span>
+                  </div>
+                  <div className="w-8 h-px" style={{ background:'rgba(255,255,255,0.1)' }} />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={{ background: otpModal.step === 'phone' ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)', border: `1px solid ${otpModal.step === 'phone' ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`, color: otpModal.step === 'phone' ? '#93c5fd' : '#475569' }}>
+                      2
+                    </div>
+                    <span className="text-xs text-slate-500">Phone OTP</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4"
+                style={{ background: otpModal.step === 'phone' ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)', border: `1px solid ${otpModal.step === 'phone' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)'}` }}>
+                {otpModal.step === 'phone' ? '📱' : '📧'}
+              </div>
+
+              <h3 className="text-xl font-bold text-white mb-1">
+                {otpModal.step === 'phone' ? 'Phone Verification' : 'Email Verification'}
+              </h3>
+              <p className="text-slate-500 text-sm mb-1">
+                {otpModal.step === 'phone' ? 'Phone OTP sent to:' : 'Email OTP sent to:'}
+              </p>
+              <p className="font-semibold mb-3" style={{ color: otpModal.step === 'phone' ? '#6ee7b7' : '#60a5fa' }}>
+                {otpModal.email}
+              </p>
+              <p className="text-slate-600 text-xs mb-5">
+                Ask <strong className="text-slate-400">{otpModal.name}</strong> to check their email and share the{' '}
+                {otpModal.step === 'phone' ? 'phone verification' : ''} OTP.
+              </p>
+
               <input type="text" maxLength={6} value={otpValue}
                 onChange={e => { setOtpValue(e.target.value.replace(/\D/g,'')); setOtpMsg(''); }}
                 placeholder="_ _ _ _ _ _"
                 className="w-full rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 mb-3"
                 style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(99,102,241,0.3)', letterSpacing:'0.5em' }} />
-              {otpMsg && <p className={`text-sm mb-3 ${otpMsg.startsWith('✅') ? 'text-emerald-400' : 'text-red-400'}`}>{otpMsg}</p>}
+
+              {otpMsg && (
+                <p className={`text-sm mb-3 ${otpMsg.startsWith('✅') || otpMsg.startsWith('📱') ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {otpMsg}
+                </p>
+              )}
+
               <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
-                onClick={handleVerifyOTP} disabled={otpLoading || otpValue.length !== 6}
+                onClick={otpModal.step === 'phone' ? handleVerifyPhoneOTP : handleVerifyOTP}
+                disabled={otpLoading || otpValue.length !== 6}
                 className="w-full py-2.5 rounded-xl font-semibold text-white disabled:opacity-50 mb-2"
-                style={{ background:'linear-gradient(135deg, #3b82f6, #1e40af)', boxShadow:'0 4px 20px rgba(59,130,246,0.3)' }}>
-                {otpLoading ? '⏳ Verifying...' : '✅ Verify OTP'}
+                style={{ background: otpModal.step === 'phone' ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #1e40af)', boxShadow:'0 4px 20px rgba(59,130,246,0.3)' }}>
+                {otpLoading ? '⏳ Verifying...' : otpModal.step === 'phone' ? '📱 Verify Phone OTP' : '✅ Verify Email OTP'}
               </motion.button>
+
               <div className="flex gap-2">
                 <button onClick={handleResendOTP} className="flex-1 text-sm py-2 rounded-xl text-blue-400 hover:text-blue-300 transition" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>🔄 Resend</button>
+                {otpModal.step === 'phone' && (
+                  <button onClick={() => { setOtpModal(prev => ({ ...prev, step:'email' })); setOtpValue(''); setOtpMsg(''); }}
+                    className="flex-1 text-sm py-2 rounded-xl text-slate-400 hover:text-slate-300 transition" style={{ border:'1px solid rgba(255,255,255,0.08)' }}>← Back</button>
+                )}
                 <button onClick={() => setOtpModal(null)} className="flex-1 text-sm py-2 rounded-xl text-slate-500 hover:text-slate-300 transition" style={{ border:'1px solid rgba(255,255,255,0.08)' }}>Cancel</button>
               </div>
             </motion.div>

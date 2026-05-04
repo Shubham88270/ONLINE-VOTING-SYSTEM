@@ -27,6 +27,7 @@ import VotesMonitoring    from './pages/admin/VotesMonitoring.jsx';
 import AdminResults       from './pages/admin/AdminResults.jsx';
 import AdminSettings      from './pages/admin/AdminSettings.jsx';
 import BlockchainExplorer from './pages/admin/BlockchainExplorer.jsx';
+import AuditLogs          from './pages/admin/AuditLogs.jsx';
 
 // ── Guards ────────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ const AppRoutes = () => (
       <Route path="results"    element={<AdminResults />}       />
       <Route path="blockchain" element={<BlockchainExplorer />} />
       <Route path="settings"   element={<AdminSettings />}      />
+      <Route path="audit"      element={<AuditLogs />}          />
     </Route>
 
     <Route path="*" element={<AutoRedirect />} />
@@ -98,7 +100,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_relativeSplatPath: true }}>
           <AppRoutes />
         </BrowserRouter>
       </AuthProvider>

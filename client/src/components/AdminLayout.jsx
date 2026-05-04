@@ -5,15 +5,66 @@ import AdminSidebar from './AdminSidebar.jsx';
 import NotificationDropdown from './NotificationDropdown.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import Avatar from './Avatar.jsx';
+import socket from '../socket.js';
+
+// Seed notifications shown on first load
+const SEED_NOTIFICATIONS = [
+  { id: 1, icon: '👤', title: 'New voter pending approval',    desc: 'A new voter registered and needs approval.',     time: '2m ago',  unread: true  },
+  { id: 2, icon: '🗳️', title: 'Vote cast in active election',  desc: 'Vote recorded in "Student Council 2026".',       time: '5m ago',  unread: true  },
+  { id: 3, icon: '⛓️', title: 'Blockchain integrity verified', desc: 'All vote blocks passed integrity check.',         time: '10m ago', unread: false },
+  { id: 4, icon: '✅', title: 'Admin approved 2 voters',       desc: 'ranjan@gmail.com and rahul@gmail.com approved.', time: '15m ago', unread: false },
+];
+
+let nextId = SEED_NOTIFICATIONS.length + 1;
+
+const timeAgo = () => 'just now';
 
 export default function AdminLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [notifOpen,   setNotifOpen]   = useState(false);
+  const [sidebarOpen,   setSidebarOpen]   = useState(false);
+  const [notifOpen,     setNotifOpen]     = useState(false);
+  const [notifications, setNotifications] = useState(SEED_NOTIFICATIONS);
   const bellRef = useRef(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const unreadCount = 2;
+  const unreadCount = notifications.filter(n => n.unread).length;
+
+  // Mark a single notification as read
+  const handleMarkRead = useCallback((id) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, unread: false } : n)
+    );
+  }, []);
+
+  // Mark all as read
+  const handleMarkAllRead = useCallback(() => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+  }, []);
+
+  // Connect socket and listen for real admin notifications
+  useEffect(() => {
+    socket.connect();
+    socket.emit('joinAdmin');
+
+    const handleIncoming = ({ icon, title, desc }) => {
+      setNotifications(prev => [{
+        id:     nextId++,
+        icon,
+        title,
+        desc,
+        time:   timeAgo(),
+        unread: true,
+      }, ...prev]);
+    };
+
+    socket.on('adminNotification', handleIncoming);
+
+    return () => {
+      socket.off('adminNotification', handleIncoming);
+      socket.emit('leaveAdmin');
+      socket.disconnect();
+    };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden"
@@ -24,6 +75,9 @@ export default function AdminLayout() {
         open={notifOpen}
         onClose={() => setNotifOpen(false)}
         anchorRef={bellRef}
+        notifications={notifications}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
       />
 
       {/* Desktop Sidebar */}

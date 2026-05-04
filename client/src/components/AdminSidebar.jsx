@@ -11,6 +11,7 @@ const menuItems = [
   { path: '/admin/monitoring', icon: '📡', label: 'Votes Monitoring'   },
   { path: '/admin/results',    icon: '📊', label: 'Results'            },
   { path: '/admin/blockchain', icon: '⛓️', label: 'Blockchain Explorer'},
+  { path: '/admin/audit',      icon: '📋', label: 'Audit Logs'         },
   { path: '/admin/settings',   icon: '⚙️', label: 'Settings'           },
 ];
 

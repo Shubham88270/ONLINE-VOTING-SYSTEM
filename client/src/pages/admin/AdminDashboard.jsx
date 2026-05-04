@@ -11,6 +11,89 @@ import { CountUp, AnimatedCard, SkeletonCard, GlowButton } from '../../component
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
+// ── Quick Action Card (3D Tilt + Hover Scale) ─────────────
+function QuickActionCard({ item, index, navigate }) {
+  const cardRef = React.useRef(null);
+  const [tilt, setTilt] = React.useState({});
+
+  const handleMouseMove = useCallback((e) => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect    = card.getBoundingClientRect();
+    const x       = e.clientX - rect.left;
+    const y       = e.clientY - rect.top;
+    const cx      = rect.width  / 2;
+    const cy      = rect.height / 2;
+    const rotateX = ((y - cy) / cy) * -18;
+    const rotateY = ((x - cx) / cx) *  18;
+    setTilt({
+      transform:  `perspective(600px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(16px) scale(1.08)`,
+      boxShadow:  `${-rotateY * 1.5}px ${rotateX * 1.5}px 30px rgba(0,0,0,0.5), 0 0 30px ${item.color}35`,
+      borderColor: `${item.color}55`,
+      background:  `${item.color}15`,
+      transition:  'none',
+    });
+  }, [item.color]);
+
+  const handleMouseLeave = useCallback(() => {
+    setTilt({
+      transform:   'perspective(600px) rotateX(0deg) rotateY(0deg) translateZ(0px) scale(1)',
+      boxShadow:   'none',
+      borderColor: `${item.color}20`,
+      background:  `${item.color}08`,
+      transition:  'all 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+    });
+  }, [item.color]);
+
+  return (
+    <motion.button
+      ref={cardRef}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.9 + index * 0.07 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={() => navigate(item.route)}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="flex flex-col items-center gap-2 p-4 rounded-xl border"
+      style={{
+        background:    `${item.color}08`,
+        borderColor:   `${item.color}20`,
+        cursor:        'pointer',
+        transformStyle:'preserve-3d',
+        position:      'relative',
+        overflow:      'hidden',
+        ...tilt,
+      }}>
+      {/* Glow overlay */}
+      <div style={{
+        position:   'absolute',
+        inset:      0,
+        borderRadius: '12px',
+        background: `radial-gradient(ellipse at 50% 0%, ${item.color}20, transparent 65%)`,
+        pointerEvents: 'none',
+      }} />
+      {/* Bottom accent line */}
+      <div style={{
+        position:   'absolute',
+        bottom:     0,
+        left:       '20%',
+        right:      '20%',
+        height:     '2px',
+        background: `linear-gradient(90deg, transparent, ${item.color}, transparent)`,
+        opacity:    0.7,
+        pointerEvents: 'none',
+      }} />
+      <span className="text-2xl" style={{ transform: 'translateZ(12px)', display: 'inline-block' }}>
+        {item.icon}
+      </span>
+      <span className="text-xs font-medium text-slate-400" style={{ transform: 'translateZ(8px)' }}>
+        {item.label}
+      </span>
+    </motion.button>
+  );
+}
+
 // ── Stat Card ─────────────────────────────────────────────
 function StatCard({ icon, label, value, sub, color, delay, onClick, className = '' }) {
   return (
@@ -80,28 +163,77 @@ export default function AdminDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [elRes, usrRes] = await Promise.all([
+      const [elRes, usrRes, statsRes] = await Promise.all([
         api.get('/elections'),
         api.get('/auth/users'),
+        api.get('/votes/dashboard-stats'),
       ]);
-      const elecs = elRes.data;
-      const usrs  = usrRes.data;
-      const totalVotes = elecs.reduce(
-        (s, e) => s + e.candidates.reduce((cs, c) => cs + (c.votes || 0), 0), 0
-      );
+      const elecs   = elRes.data;
+      const usrs    = usrRes.data;
+      const ds      = statsRes.data;
+
       setStats({
-        voters:     usrs.filter(u => !u.isAdmin).length,
-        votes:      totalVotes,
-        elections:  elecs.filter(e => e.isActive).length,
-        candidates: elecs.reduce((s, e) => s + e.candidates.length, 0),
+        voters:      ds.totalUsers,
+        votes:       ds.totalVotes,
+        elections:   ds.activeElections,
+        pending:     ds.pendingUsers,
+        turnout:     ds.turnoutPct,
+        hourly:      ds.hourlyVotes || [],
+        activity:    ds.recentActivity || [],
       });
       setElections(elecs);
       setUsers(usrs.filter(u => !u.isAdmin).slice(0, 5));
     } catch {}
     finally { setLoading(false); }
-  }, []); // ✅ empty deps — function never recreates
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── PDF Export ──────────────────────────────────────────
+  const handleExportPDF = () => {
+    const printWindow = window.open('', '_blank');
+    const rows = elections.map(e => {
+      const total = e.candidates.reduce((s, c) => s + (c.votes || 0), 0);
+      const winner = [...e.candidates].sort((a,b) => b.votes - a.votes)[0];
+      return `
+        <tr>
+          <td>${e.title}</td>
+          <td>${e.isActive ? 'Active' : 'Closed'}</td>
+          <td>${total}</td>
+          <td>${winner ? winner.name : '—'}</td>
+          <td>${winner ? winner.votes : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    printWindow.document.write(`
+      <html><head><title>VoteApp — Election Results</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 30px; color: #1f2937; }
+        h1 { color: #4f46e5; } h2 { color: #374151; margin-top: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th { background: #4f46e5; color: white; padding: 10px 14px; text-align: left; }
+        td { padding: 9px 14px; border-bottom: 1px solid #e5e7eb; }
+        tr:nth-child(even) td { background: #f9fafb; }
+        .meta { color: #6b7280; font-size: 13px; margin-bottom: 20px; }
+        .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; }
+        .active { background:#d1fae5; color:#065f46; }
+        .closed { background:#f3f4f6; color:#6b7280; }
+      </style></head>
+      <body>
+        <h1>🗳️ VoteApp — Election Results Report</h1>
+        <p class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Total Elections: ${elections.length} &nbsp;|&nbsp; Total Votes: ${stats?.votes ?? 0} &nbsp;|&nbsp; Turnout: ${stats?.turnout ?? 0}%</p>
+        <h2>Election Summary</h2>
+        <table>
+          <thead><tr><th>Election</th><th>Status</th><th>Total Votes</th><th>Leading Candidate</th><th>Votes</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p style="margin-top:30px;color:#9ca3af;font-size:12px;">This report is auto-generated by VoteApp. All votes are blockchain-verified.</p>
+      </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
+  };
 
   // Chart data — top election by votes
   const topElection = elections.find(e => e.candidates.length > 0) || null;
@@ -174,19 +306,28 @@ export default function AdminDashboard() {
   };
 
   const statCards = stats ? [
-    { icon: '👥', label: 'Total Voters',      value: stats.voters,     color: '#3b82f6', sub: 'Registered users',    route: '/admin/users'      },
-    { icon: '🗳️', label: 'Total Votes Cast',  value: stats.votes,      color: '#8b5cf6', sub: 'Across all elections', route: '/admin/monitoring' },
-    { icon: '✅', label: 'Active Elections',   value: stats.elections,  color: '#10b981', sub: 'Currently running',   route: '/admin/elections'  },
-    { icon: '🙋', label: 'Candidates',         value: stats.candidates, color: '#f59e0b', sub: 'Total registered',    route: '/admin/candidates' },
+    { icon: '👥', label: 'Total Voters',      value: stats.voters,    color: '#3b82f6', sub: 'Registered users',       route: '/admin/users'      },
+    { icon: '🗳️', label: 'Total Votes Cast',  value: stats.votes,     color: '#8b5cf6', sub: 'Across all elections',   route: '/admin/monitoring' },
+    { icon: '✅', label: 'Active Elections',   value: stats.elections, color: '#10b981', sub: 'Currently running',      route: '/admin/elections'  },
+    { icon: '⏳', label: 'Pending Approval',   value: stats.pending,   color: '#f59e0b', sub: `Turnout: ${stats.turnout}%`, route: '/admin/users' },
   ] : [];
 
-  const activities = [
-    { icon: '🗳️', text: 'New vote cast in "' + (elections[0]?.title || 'Election') + '"', time: 'Just now' },
-    { icon: '👤', text: 'New voter registered and verified', time: '2 min ago' },
-    { icon: '🔒', text: 'Blockchain integrity verified', time: '5 min ago' },
-    { icon: '📊', text: 'Results updated for active election', time: '10 min ago' },
-    { icon: '✅', text: 'Admin approved 2 pending voters', time: '15 min ago' },
-  ];
+  // Real activity from audit logs
+  const actionLabels = {
+    VOTE_CAST:        { icon: '🗳️', text: (l) => `${l.actor} voted in "${l.target}"` },
+    USER_APPROVED:    { icon: '✅', text: (l) => `Admin approved voter: ${l.target}` },
+    ELECTION_CREATED: { icon: '➕', text: (l) => `Election created: "${l.target}"` },
+    ELECTION_CLOSED:  { icon: '🔒', text: (l) => `Election closed: "${l.target}"` },
+  };
+
+  const activities = (stats?.activity || []).map(log => {
+    const def = actionLabels[log.action] || { icon: '📋', text: (l) => l.action };
+    return {
+      icon: def.icon,
+      text: def.text(log),
+      time: new Date(log.createdAt).toLocaleTimeString(),
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -195,9 +336,18 @@ export default function AdminDashboard() {
       <AnimatedCard delay={0} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Welcome back, Admin 👋</p>
+          <p className="text-slate-500 text-sm mt-0.5">
+            Welcome back, Admin 👋
+            {stats && (
+              <span className="ml-3 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.2)', color:'#6ee7b7' }}>
+                📈 {stats.turnout}% Turnout
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
+          <GlowButton onClick={handleExportPDF} variant="ghost">📄 Export PDF</GlowButton>
           <GlowButton onClick={load} variant="ghost">🔄 Refresh</GlowButton>
           <GlowButton onClick={() => navigate('/admin/elections')}>+ New Election</GlowButton>
         </div>
@@ -340,23 +490,7 @@ export default function AdminDashboard() {
             { icon: '📊', label: 'View Results',    route: '/admin/results',    color: '#10b981' },
             { icon: '⛓️', label: 'Blockchain',      route: '/admin/blockchain', color: '#f59e0b' },
           ].map((item, i) => (
-            <motion.button key={item.label}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 + i * 0.07 }}
-              whileHover={{ scale: 1.04, y: -2 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => navigate(item.route)}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl border transition-all btn-3d"
-              style={{
-                background: `${item.color}08`,
-                borderColor: `${item.color}20`,
-              }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = `0 0 20px ${item.color}20`}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
-              <span className="text-2xl">{item.icon}</span>
-              <span className="text-xs font-medium text-slate-400">{item.label}</span>
-            </motion.button>
+            <QuickActionCard key={item.label} item={item} index={i} navigate={navigate} />
           ))}
         </div>
       </AnimatedCard>

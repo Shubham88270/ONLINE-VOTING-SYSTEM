@@ -3,18 +3,6 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { validateLogin } from '../utils/validators.js';
 
-// Floating human SVG
-const FloatingHuman = ({ style, color = '#818cf8', size = 60 }) => (
-  <svg width={size} height={size * 1.4} viewBox="0 0 40 56" fill="none" style={style}>
-    <circle cx="20" cy="10" r="8" fill={color} fillOpacity="0.4" />
-    <rect x="12" y="20" width="16" height="20" rx="5" fill={color} fillOpacity="0.35" />
-    <rect x="2" y="22" width="10" height="5" rx="2.5" fill={color} fillOpacity="0.3" />
-    <rect x="28" y="22" width="10" height="5" rx="2.5" fill={color} fillOpacity="0.3" />
-    <rect x="12" y="42" width="7" height="14" rx="3.5" fill={color} fillOpacity="0.3" />
-    <rect x="21" y="42" width="7" height="14" rx="3.5" fill={color} fillOpacity="0.3" />
-  </svg>
-);
-
 export default function Auth() {
   const [form,        setForm]        = useState({ email: '', password: '' });
   const [errors,      setErrors]      = useState({});
@@ -35,12 +23,12 @@ export default function Auth() {
   }, [location]);
 
   const handleBlur = (field) => {
-    setTouched((p) => ({ ...p, [field]: true }));
+    setTouched(p => ({ ...p, [field]: true }));
     setErrors(validateLogin(form));
   };
 
   const handleChange = (field, value) => {
-    setForm((p) => ({ ...p, [field]: value }));
+    setForm(p => ({ ...p, [field]: value }));
     if (touched[field]) setErrors(validateLogin({ ...form, [field]: value }));
   };
 
@@ -63,155 +51,276 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex items-center justify-center px-4">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0d1117 0%, #161b22 40%, #0d1117 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1rem',
+      fontFamily: "'Inter', system-ui, sans-serif",
+    }}>
 
-      {/* Abstract background blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-indigo-600/10 blur-3xl animate-pulse-slow" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-violet-600/10 blur-3xl animate-pulse-slow" style={{ animationDelay: '1.5s' }} />
-        <div className="absolute top-[30%] right-[20%] w-[300px] h-[300px] rounded-full bg-cyan-500/8 blur-3xl animate-pulse-slow" style={{ animationDelay: '3s' }} />
-
-        {/* Grid */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.03]">
-          {Array.from({ length: 20 }).map((_, i) => (
-            <line key={`v${i}`} x1={`${i * 5}%`} y1="0" x2={`${i * 5}%`} y2="100%" stroke="white" strokeWidth="1" />
-          ))}
-          {Array.from({ length: 15 }).map((_, i) => (
-            <line key={`h${i}`} x1="0" y1={`${i * 7}%`} x2="100%" y2={`${i * 7}%`} stroke="white" strokeWidth="1" />
-          ))}
-        </svg>
-
-        {/* Floating humans */}
-        <div className="absolute top-[10%] left-[5%] animate-float">
-          <FloatingHuman color="#6366f1" size={70} />
-        </div>
-        <div className="absolute top-[20%] right-[8%] animate-float2">
-          <FloatingHuman color="#8b5cf6" size={55} />
-        </div>
-        <div className="absolute bottom-[15%] left-[8%] animate-float3">
-          <FloatingHuman color="#06b6d4" size={50} />
-        </div>
-        <div className="absolute bottom-[20%] right-[5%] animate-float">
-          <FloatingHuman color="#6366f1" size={65} />
-        </div>
-        <div className="absolute top-[50%] left-[2%] animate-float2">
-          <FloatingHuman color="#a78bfa" size={45} />
-        </div>
-        <div className="absolute top-[45%] right-[2%] animate-float3">
-          <FloatingHuman color="#67e8f9" size={48} />
-        </div>
-
-        {/* Floating dots */}
-        {[[10,30],[20,70],[80,20],[90,60],[50,10],[50,90]].map(([l,t], i) => (
-          <div key={i} className="absolute w-1.5 h-1.5 rounded-full bg-indigo-400/30 animate-pulse-slow"
-            style={{ left: `${l}%`, top: `${t}%`, animationDelay: `${i * 0.5}s` }} />
-        ))}
+      {/* Subtle background glow */}
+      <div style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', top: '20%', left: '30%',
+          width: '400px', height: '400px', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(99,102,241,0.08), transparent 70%)',
+          filter: 'blur(40px)',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: '20%', right: '25%',
+          width: '300px', height: '300px', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(139,92,246,0.06), transparent 70%)',
+          filter: 'blur(40px)',
+        }} />
       </div>
 
-      {/* Login Card */}
-      <div className="relative z-10 w-full max-w-md animate-slide-up">
+      <div style={{ width: '100%', maxWidth: '380px', position: 'relative', zIndex: 1 }}>
 
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-2xl shadow-indigo-500/40 mb-4">
-            <span className="text-3xl">🗳️</span>
-          </div>
-          <h1 className="text-white text-2xl font-bold">VoteApp</h1>
-          <p className="text-slate-400 text-sm mt-1">Secure Online Voting System</p>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <div style={{
+            width: '56px', height: '56px', borderRadius: '16px',
+            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '26px', margin: '0 auto 0.75rem',
+            boxShadow: '0 8px 32px rgba(99,102,241,0.35)',
+          }}>🗳️</div>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>Online Voting System</p>
         </div>
 
-        {/* Card */}
-        <div className="glass-white rounded-3xl p-8 shadow-2xl">
+        {/* Form card — Uiverse style */}
+        <form onSubmit={handleSubmit} noValidate style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          paddingLeft: '2em',
+          paddingRight: '2em',
+          paddingBottom: '0.4em',
+          backgroundColor: '#1e2433',
+          borderRadius: '25px',
+          transition: '0.4s ease-in-out',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.1)',
+          border: '1px solid transparent',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.03)';
+          e.currentTarget.style.border = '1px solid rgba(99,102,241,0.3)';
+          e.currentTarget.style.boxShadow = '0 24px 70px rgba(0,0,0,0.7), 0 0 30px rgba(99,102,241,0.1)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.border = '1px solid transparent';
+          e.currentTarget.style.boxShadow = '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.1)';
+        }}>
 
-          <h2 className="text-gray-800 text-xl font-bold mb-1">Welcome back</h2>
-          <p className="text-gray-400 text-sm mb-6">Sign in to cast your vote</p>
+          {/* Heading */}
+          <div id="heading" style={{
+            textAlign: 'center',
+            margin: '2em 0 0.5em',
+            color: '#ffffff',
+            fontSize: '1.3em',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+          }}>
+            Welcome Back
+            <p style={{ fontSize: '0.6em', color: '#64748b', fontWeight: 400, marginTop: '4px' }}>
+              Sign in to cast your vote
+            </p>
+          </div>
 
           {/* Success */}
           {successMsg && (
-            <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-4 animate-fade-in">
-              {successMsg}
-            </div>
+            <div style={{
+              padding: '0.6em 1em', borderRadius: '12px', fontSize: '12px',
+              background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+              color: '#6ee7b7', textAlign: 'center',
+            }}>{successMsg}</div>
           )}
 
-          {/* Error */}
+          {/* Server error */}
           {serverError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3 mb-4 animate-fade-in flex items-center gap-2">
-              <span>⚠️</span>{serverError}
-            </div>
+            <div style={{
+              padding: '0.6em 1em', borderRadius: '12px', fontSize: '12px',
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+              color: '#fca5a5', textAlign: 'center',
+            }}>⚠️ {serverError}</div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Email Address</label>
-              <input type="email" placeholder="you@example.com"
-                value={form.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                onBlur={() => handleBlur('email')}
-                className={`w-full border rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 transition ${
-                  touched.email && errors.email
-                    ? 'border-red-300 focus:ring-red-200'
-                    : touched.email && !errors.email
-                    ? 'border-green-300 focus:ring-green-200'
-                    : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-300'
-                }`} />
-              {touched.email && errors.email && (
-                <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                  <span>⚠️</span>{errors.email}
-                </p>
-              )}
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Password</label>
-              <div className="relative">
-                <input type={showPw ? 'text' : 'password'} placeholder="••••••••"
-                  value={form.password}
-                  onChange={(e) => handleChange('password', e.target.value)}
-                  onBlur={() => handleBlur('password')}
-                  className={`w-full border rounded-xl px-4 py-3 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 transition pr-11 ${
-                    touched.password && errors.password
-                      ? 'border-red-300 focus:ring-red-200'
-                      : touched.password && !errors.password
-                      ? 'border-green-300 focus:ring-green-200'
-                      : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-300'
-                  }`} />
-                <button type="button" onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition text-sm">
-                  {showPw ? '🙈' : '👁️'}
-                </button>
-              </div>
-              {touched.password && errors.password && (
-                <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                  <span>⚠️</span>{errors.password}
-                </p>
-              )}
-            </div>
-
-            {/* Submit */}
-            <button type="submit" disabled={loading}
-              className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white py-3 rounded-xl font-semibold transition shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:-translate-y-0.5 disabled:opacity-60 disabled:translate-y-0 flex items-center justify-center gap-2 mt-2">
-              {loading ? (
-                <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                </svg>Signing in...</>
-              ) : '🔐 Sign In'}
-            </button>
-          </form>
-
-          {/* Info */}
-          <div className="mt-5 p-3.5 bg-indigo-50 rounded-xl border border-indigo-100 text-center">
-            <p className="text-xs text-indigo-500 font-medium">Don't have an account?</p>
-            <p className="text-xs text-gray-400 mt-0.5">Contact your administrator to get registered.</p>
+          {/* Email field */}
+          <div className="field" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5em',
+            borderRadius: '25px',
+            padding: '0.6em',
+            border: touched.email && errors.email ? '1px solid rgba(239,68,68,0.4)' : 'none',
+            outline: 'none',
+            color: 'white',
+            backgroundColor: '#141922',
+            boxShadow: 'inset 2px 5px 10px rgb(5,5,5)',
+          }}>
+            <svg className="input-icon" style={{ height:'1.3em', width:'1.3em', fill:'white', flexShrink:0 }}
+              viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+            </svg>
+            <input
+              type="email"
+              placeholder="Email address"
+              value={form.email}
+              onChange={e => handleChange('email', e.target.value)}
+              onBlur={() => handleBlur('email')}
+              style={{
+                background: 'none', border: 'none', outline: 'none',
+                width: '100%', color: '#d3d3d3', fontSize: '14px',
+              }}
+            />
           </div>
-        </div>
+          {touched.email && errors.email && (
+            <p style={{ color:'#f87171', fontSize:'11px', margin:'-4px 0 0 12px' }}>⚠ {errors.email}</p>
+          )}
 
-        <Link to="/" className="block text-center text-slate-500 text-xs mt-5 hover:text-slate-300 transition">
-          ← Back to Home
-        </Link>
+          {/* Password field */}
+          <div className="field" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5em',
+            borderRadius: '25px',
+            padding: '0.6em',
+            border: touched.password && errors.password ? '1px solid rgba(239,68,68,0.4)' : 'none',
+            outline: 'none',
+            color: 'white',
+            backgroundColor: '#141922',
+            boxShadow: 'inset 2px 5px 10px rgb(5,5,5)',
+          }}>
+            <svg className="input-icon" style={{ height:'1.3em', width:'1.3em', fill:'white', flexShrink:0 }}
+              viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+            <input
+              type={showPw ? 'text' : 'password'}
+              placeholder="Password"
+              value={form.password}
+              onChange={e => handleChange('password', e.target.value)}
+              onBlur={() => handleBlur('password')}
+              style={{
+                background: 'none', border: 'none', outline: 'none',
+                width: '100%', color: '#d3d3d3', fontSize: '14px',
+              }}
+            />
+            <button type="button" onClick={() => setShowPw(!showPw)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b', fontSize:'12px', padding:'0 4px' }}>
+              {showPw ? '🙈' : '👁️'}
+            </button>
+          </div>
+          {touched.password && errors.password && (
+            <p style={{ color:'#f87171', fontSize:'11px', margin:'-4px 0 0 12px' }}>⚠ {errors.password}</p>
+          )}
+
+          {/* Buttons */}
+          <div className="btn" style={{
+            display: 'flex',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            marginTop: '2em',
+          }}>
+            {/* Login button */}
+            <button type="submit" disabled={loading}
+              style={{
+                width: '100%',
+                padding: '0.65em',
+                borderRadius: '25px',
+                border: 'none',
+                outline: 'none',
+                transition: '0.4s ease-in-out',
+                backgroundColor: loading ? '#1e1e1e' : '#252525',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 15px rgba(99,102,241,0.2)',
+                letterSpacing: '0.02em',
+                transform: 'scale(1)',
+              }}
+              onMouseEnter={e => {
+                if (!loading) {
+                  e.currentTarget.style.backgroundColor = '#6366f1';
+                  e.currentTarget.style.transform = 'scale(1.06)';
+                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(99,102,241,0.45)';
+                }
+              }}
+              onMouseLeave={e => {
+                if (!loading) {
+                  e.currentTarget.style.backgroundColor = '#252525';
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(99,102,241,0.2)';
+                }
+              }}
+              onMouseDown={e => {
+                if (!loading) {
+                  e.currentTarget.style.transform = 'scale(0.96)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.3)';
+                }
+              }}
+              onMouseUp={e => {
+                if (!loading) {
+                  e.currentTarget.style.transform = 'scale(1.06)';
+                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(99,102,241,0.45)';
+                }
+              }}>
+              {loading ? '⏳ Signing in...' : '🔐 Sign In'}
+            </button>
+
+            {/* Divider */}
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', margin:'4px 0' }}>
+              <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.06)' }} />
+              <span style={{ color:'#374151', fontSize:'11px' }}>or</span>
+              <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.06)' }} />
+            </div>
+
+            {/* Back to home */}
+            <Link to="/"
+              style={{
+                width: '100%',
+                padding: '0.5em',
+                borderRadius: '25px',
+                border: 'none',
+                outline: 'none',
+                transition: '0.4s ease-in-out',
+                backgroundColor: '#252525',
+                color: '#94a3b8',
+                fontSize: '13px',
+                cursor: 'pointer',
+                textAlign: 'center',
+                textDecoration: 'none',
+                display: 'block',
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1a1a1a'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#252525'}>
+              ← Back to Home
+            </Link>
+          </div>
+
+          {/* Footer note */}
+          <div style={{
+            textAlign: 'center',
+            padding: '1.5em 0 1em',
+            color: '#374151',
+            fontSize: '11px',
+            lineHeight: '1.5',
+          }}>
+            Don't have an account?<br />
+            <span style={{ color: '#6366f1' }}>Contact your administrator</span>
+          </div>
+        </form>
       </div>
     </div>
   );
