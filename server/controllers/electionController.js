@@ -82,16 +82,6 @@ exports.toggleElection = async (req, res) => {
     if (!election) return res.status(404).json({ message: 'Election not found' });
     election.isActive = !election.isActive;
     await election.save();
-
-    await logAudit(election.isActive ? 'ELECTION_ACTIVATED' : 'ELECTION_DEACTIVATED', {
-      actorId:  req.user._id,
-      actor:    'admin',
-      target:   election.title,
-      targetId: election._id,
-      ip:       req.ip || '',
-      meta:     { isActive: election.isActive },
-    });
-
     res.json(election);
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -102,15 +92,6 @@ exports.deleteElection = async (req, res) => {
     if (!election) return res.status(404).json({ message: 'Election not found' });
     await Candidate.deleteMany({ election: election._id });
     await election.deleteOne();
-
-    await logAudit('ELECTION_DELETED', {
-      actorId:  req.user._id,
-      actor:    'admin',
-      target:   election.title,
-      targetId: election._id,
-      ip:       req.ip || '',
-    });
-
     res.json({ message: 'Election deleted' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

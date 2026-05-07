@@ -98,26 +98,14 @@ exports.login = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
-    if (!token) return res.status(400).json({ message: 'Verification token missing' });
-
-    // Check if already verified (token reuse attempt)
-    const alreadyVerified = await User.findOne({ isVerified: true, verificationToken: null });
-
     const user = await User.findOne({
       verificationToken:  token,
       verificationExpiry: { $gt: new Date() },
     });
-
-    if (!user) {
-      // Distinguish between expired and already-used
-      const usedUser = await User.findOne({ isVerified: true });
-      return res.status(400).redirect(
-        `${process.env.CLIENT_URL}/auth?error=link_invalid`
-      );
-    }
+    if (!user) return res.status(400).json({ message: 'Invalid or expired link' });
 
     user.isVerified         = true;
-    user.verificationToken  = null;   // single-use: invalidate immediately
+    user.verificationToken  = null;
     user.verificationExpiry = null;
     await user.save();
     res.redirect(`${process.env.CLIENT_URL}/auth?verified=true`);
@@ -249,7 +237,7 @@ exports.adminRegisterUser = async (req, res) => {
         const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
         const otp = generateOTP();
         exists.otp       = otp;
-        exists.otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+        exists.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
         await exists.save();
         try { await sendOTPEmail(email, exists.name, otp); } catch {}
         return res.json({
@@ -275,7 +263,7 @@ exports.adminRegisterUser = async (req, res) => {
       isVerified: false,
       isApproved: false,
       otp,
-      otpExpiry: new Date(Date.now() + 3 * 60 * 1000),
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
     });
 
     // Send email OTP
@@ -291,7 +279,7 @@ exports.adminRegisterUser = async (req, res) => {
       const { generateOTP: genPhoneOTP } = require('../utils/sendOTP');
       const phoneOtp = genPhoneOTP();
       user.phoneOtp       = phoneOtp;
-      user.phoneOtpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+      user.phoneOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       await user.save();
       // Send phone OTP via email (SMS gateway can replace this later)
       try {
@@ -321,43 +309,17 @@ exports.verifyOTP = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // ── Lockout check ───────────────────────────────────────
-    if (user.otpLockedUntil && new Date() < user.otpLockedUntil) {
-      const remaining = Math.ceil((user.otpLockedUntil - Date.now()) / 60000);
-      return res.status(429).json({
-        message: `Too many failed attempts. Try again in ${remaining} minute(s).`,
-      });
-    }
+    if (!user.otp || user.otp !== otp)
+      return res.status(400).json({ message: 'Invalid OTP' });
 
-    // ── Expiry check ────────────────────────────────────────
-    if (!user.otp || new Date() > user.otpExpiry) {
+    if (new Date() > user.otpExpiry)
       return res.status(400).json({ message: 'OTP expired. Ask admin to resend.' });
-    }
 
-    // ── Wrong OTP ───────────────────────────────────────────
-    if (user.otp !== otp) {
-      user.otpAttempts = (user.otpAttempts || 0) + 1;
-      if (user.otpAttempts >= 5) {
-        user.otpLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lockout
-        user.otpAttempts    = 0;
-        await user.save();
-        return res.status(429).json({
-          message: 'Too many failed attempts. Account locked for 15 minutes.',
-        });
-      }
-      await user.save();
-      return res.status(400).json({
-        message: `Invalid OTP. ${5 - user.otpAttempts} attempt(s) remaining.`,
-      });
-    }
-
-    // ── OTP correct — verify and approve ───────────────────
-    user.isVerified     = true;
-    user.isApproved     = true;
-    user.otp            = null;
-    user.otpExpiry      = null;
-    user.otpAttempts    = 0;
-    user.otpLockedUntil = null;
+    // OTP correct — verify and approve
+    user.isVerified = true;
+    user.isApproved = true;
+    user.otp        = null;
+    user.otpExpiry  = null;
     await user.save();
 
     res.json({
@@ -404,7 +366,7 @@ exports.resendPhoneOTP = async (req, res) => {
     const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
     const otp = generateOTP();
     user.phoneOtp       = otp;
-    user.phoneOtpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+    user.phoneOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
     try { await sendOTPEmail(user.email, user.name, otp, true); } catch {}
@@ -423,7 +385,7 @@ exports.resendOTP = async (req, res) => {
     const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
     const otp = generateOTP();
     user.otp       = otp;
-    user.otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
     try { await sendOTPEmail(user.email, user.name, otp); } catch {}
@@ -486,7 +448,7 @@ exports.forgotPassword = async (req, res) => {
     const { generateOTP, sendOTPEmail } = require('../utils/sendOTP');
     const otp = generateOTP();
     user.otp       = otp;
-    user.otpExpiry = new Date(Date.now() + 3 * 60 * 1000); // 3 min
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
     await user.save();
 
     try {

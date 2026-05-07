@@ -95,11 +95,11 @@ function QuickActionCard({ item, index, navigate }) {
 }
 
 // ── Stat Card ─────────────────────────────────────────────
-function StatCard({ icon, label, value, sub, color, delay, onClick, className = '' }) {
+function StatCard({ icon, label, value, sub, color, delay, onClick, gradient, className = '' }) {
   return (
     <AnimatedCard delay={delay}
-      className={`relative overflow-hidden rounded-2xl border border-white/10 cursor-pointer group stat-card-3d ${className}`}
-      style={{ background: 'rgba(255,255,255,0.04)' }}
+      className={`relative overflow-hidden rounded-2xl border cursor-pointer group stat-card-3d ${className}`}
+      style={{ background: gradient || 'rgba(255,255,255,0.04)', borderColor: `${color}25` }}
       onClick={onClick}>
       <motion.div
         whileHover={{ scale: 1.02 }}
@@ -108,12 +108,12 @@ function StatCard({ icon, label, value, sub, color, delay, onClick, className = 
         style={{ backdropFilter: 'blur(16px)' }}>
         {/* Glow bg */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl"
-          style={{ background: `radial-gradient(circle at 30% 50%, ${color}15, transparent 70%)` }} />
+          style={{ background: `radial-gradient(circle at 30% 50%, ${color}20, transparent 70%)` }} />
 
         <div className="relative z-10">
           <div className="flex items-center justify-between mb-4">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-lg"
-              style={{ background: `linear-gradient(135deg, ${color}30, ${color}10)`, border: `1px solid ${color}30` }}>
+              style={{ background: `linear-gradient(135deg, ${color}40, ${color}15)`, border: `1px solid ${color}40` }}>
               {icon}
             </div>
             <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: color }} />
@@ -121,12 +121,12 @@ function StatCard({ icon, label, value, sub, color, delay, onClick, className = 
           <p className="text-3xl font-bold text-white mb-1">
             {value !== null ? <CountUp target={value} /> : '—'}
           </p>
-          <p className="text-sm font-medium" style={{ color }}>{label}</p>
+          <p className="text-sm font-semibold" style={{ color }}>{label}</p>
           {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
         </div>
 
         {/* Bottom accent line */}
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-40 group-hover:opacity-80 transition-opacity"
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
           style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }} />
       </motion.div>
     </AnimatedCard>
@@ -306,10 +306,10 @@ export default function AdminDashboard() {
   };
 
   const statCards = stats ? [
-    { icon: '👥', label: 'Total Voters',      value: stats.voters,    color: '#3b82f6', sub: 'Registered users',       route: '/admin/users'      },
-    { icon: '🗳️', label: 'Total Votes Cast',  value: stats.votes,     color: '#8b5cf6', sub: 'Across all elections',   route: '/admin/monitoring' },
-    { icon: '✅', label: 'Active Elections',   value: stats.elections, color: '#10b981', sub: 'Currently running',      route: '/admin/elections'  },
-    { icon: '⏳', label: 'Pending Approval',   value: stats.pending,   color: '#f59e0b', sub: `Turnout: ${stats.turnout}%`, route: '/admin/users' },
+    { icon: '👥', label: 'Total Voters',      value: stats.voters,    color: '#3b82f6', sub: 'Registered users',           route: '/admin/users',      gradient: 'linear-gradient(135deg,rgba(59,130,246,0.15),rgba(59,130,246,0.05))' },
+    { icon: '🗳️', label: 'Total Votes Cast',  value: stats.votes,     color: '#a855f7', sub: 'Across all elections',       route: '/admin/monitoring', gradient: 'linear-gradient(135deg,rgba(168,85,247,0.15),rgba(168,85,247,0.05))' },
+    { icon: '✅', label: 'Active Elections',   value: stats.elections, color: '#10b981', sub: 'Currently running',          route: '/admin/elections',  gradient: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(16,185,129,0.05))' },
+    { icon: '⏳', label: 'Pending Approval',   value: stats.pending,   color: '#f59e0b', sub: `Turnout: ${stats.turnout}%`, route: '/admin/users',      gradient: 'linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05))' },
   ] : [];
 
   // Real activity from audit logs

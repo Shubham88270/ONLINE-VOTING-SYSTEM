@@ -169,14 +169,24 @@ export default function UserHome() {
           <div className="grid gap-4 sm:grid-cols-2">
             {active.map((e, i) => {
               const hasVoted = user?.votedElections?.includes(e._id);
+              const cardColors = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+              const cardColor = cardColors[i % cardColors.length];
               return (
                 <motion.div key={e._id}
                   initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
                   transition={{ delay: 0.5 + i*0.08 }}
                   whileHover={{ y:-3 }}
-                  className="rounded-2xl p-5 flex flex-col justify-between card-3d-subtle"
-                  style={glass}>
-                  <div>
+                  className="rounded-2xl p-5 flex flex-col justify-between card-3d-subtle relative overflow-hidden"
+                  style={{ ...glass, borderColor: `${cardColor}30` }}>
+                  
+                  {/* Colored accent bar on left */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: cardColor }} />
+                  
+                  {/* Subtle glow */}
+                  <div className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none"
+                    style={{ background: `radial-gradient(circle at 30% 50%, ${cardColor}08, transparent 70%)` }} />
+                  
+                  <div className="relative z-10">
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="font-semibold text-slate-200 flex-1 pr-2">{e.title}</h3>
                       <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
@@ -189,7 +199,7 @@ export default function UserHome() {
                     <CountdownTimer endDate={e.endDate} isActive={e.isActive} onExpire={fetchElections} />
                   </div>
 
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex gap-2 mt-4 relative z-10">
                     {hasVoted ? (
                       <motion.span whileHover={{ scale:1.02 }}
                         className="flex-1 text-center py-2 rounded-xl text-sm font-semibold"
@@ -205,7 +215,7 @@ export default function UserHome() {
                       <motion.div whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }} className="flex-1">
                         <Link to={`/dashboard/vote/${e._id}`}
                           className="block text-center py-2 rounded-xl text-sm font-semibold text-white btn-3d"
-                          style={{ background:'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow:'0 4px 15px rgba(99,102,241,0.3)' }}>
+                          style={{ background:`linear-gradient(135deg,${cardColor},${cardColor}dd)`, boxShadow:`0 4px 15px ${cardColor}50` }}>
                           🗳️ Vote Now
                         </Link>
                       </motion.div>

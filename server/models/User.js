@@ -39,10 +39,6 @@ const userSchema = new mongoose.Schema(
     // OTP for admin-registered users
     otp:         { type: String,  default: null },
     otpExpiry:   { type: Date,    default: null },
-
-    // OTP brute-force protection
-    otpAttempts:   { type: Number, default: 0 },
-    otpLockedUntil:{ type: Date,   default: null },
   },
   { timestamps: true }
 );

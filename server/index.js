@@ -4,7 +4,7 @@ const cors     = require('cors');
 const helmet   = require('helmet');
 const http     = require('http');
 const { Server } = require('socket.io');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const authRoutes     = require('./routes/auth');
 const electionRoutes = require('./routes/elections');
@@ -22,28 +22,9 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
+app.use(helmet());
 app.use(cors({
-  origin: function (origin, callback) {
-    const allowed = [
-      'http://localhost:3000',
-      'https://online-voting-system-k1j4.onrender.com',
-      'https://online-voting-system-btw1m28pr-shubham88270s-projects.vercel.app',
-      'https://online-voting-system-sigma-puce.vercel.app',
-      process.env.CLIENT_URL,
-    ].filter(Boolean);
-
-    // Allow requests with no origin (Postman, mobile, server-to-server)
-    if (!origin) return callback(null, true);
-
-    if (allowed.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
-    }
-  },
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' })); // 10mb for base64 photos
@@ -102,16 +83,11 @@ setInterval(async () => {
 }, 60 * 1000); // every 60 seconds
 
 // Connect MongoDB & start server
-const PORT = process.env.PORT || 5000;
-
-// Start server FIRST — Render needs port bound immediately
-server.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
-
-// Connect MongoDB after server is up
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch((err) => console.error('❌ DB connection failed:', err.message));
-
-module.exports = app;
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    server.listen(process.env.PORT, () =>
+      console.log(`✅ Server running on http://localhost:${process.env.PORT}`)
+    );
+  })
+  .catch((err) => console.error('❌ DB error:', err));
